@@ -14,7 +14,7 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 720,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      preload: join(__dirname, '../preload/index.js'), // compiled by electron-vite from src/preload/index.ts
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false

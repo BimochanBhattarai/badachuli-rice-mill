@@ -305,5 +305,5 @@ INSERT INTO settings (key, value) VALUES
   ('mill_pan',           '""'),
   ('fiscal_year_start_month', '4');
 
-INSERT INTO users (username, pin_hash, role) VALUES
-  ('owner', 'CHANGEME', 'owner');
+-- No default user seeded here.
+-- Owner account is created through the first-run setup wizard on first launch.

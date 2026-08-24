@@ -11,6 +11,7 @@
     "jsx": "react-jsx",
     "composite": true,
     "sourceMap": true,
+    "outDir": "out/web",
     "paths": {
       "@shared/*": ["./src/shared/*"],
       "@renderer/*": ["./src/renderer/*"]

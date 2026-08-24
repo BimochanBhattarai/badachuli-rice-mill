@@ -9,6 +9,8 @@
   },
   "scripts": {
     "dev": "electron-vite dev",
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "postinstall": "electron-rebuild -f -w better-sqlite3",
     "build": "tsc --noEmit && electron-vite build",
     "preview": "electron-vite preview",
     "package:win": "electron-builder --win",
@@ -19,8 +21,8 @@
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",
-    "drizzle-orm": "^0.38.0",
     "bikram-sambat": "^1.8.1",
+    "drizzle-orm": "^0.38.0",
     "electron-store": "^10.0.0",
     "escpos": "^3.0.0-alpha.6",
     "escpos-usb": "^3.0.0-alpha.4"
@@ -28,6 +30,7 @@
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.0",
     "@electron-toolkit/utils": "^3.0.0",
+    "@electron/rebuild": "^4.2.0",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^20.0.0",
     "@types/react": "^18.3.0",
@@ -49,7 +52,9 @@
     "appId": "com.badachuli.ricemill",
     "productName": "Badachuli Rice Mill",
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "resources/icon.ico"
     },
     "nsis": {
