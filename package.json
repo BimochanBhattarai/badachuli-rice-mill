@@ -5,7 +5,7 @@
   "main": "out/main/index.js",
   "author": {
     "name": "Bimochan Bhattarai",
-    "email": "sewajodne@gmail.com"
+    "email": "bimochan.bhattarai@gmail.com"
   },
   "scripts": {
     "dev": "electron-vite dev",
@@ -25,7 +25,9 @@
     "drizzle-orm": "^0.38.0",
     "electron-store": "^10.0.0",
     "escpos": "^3.0.0-alpha.6",
-    "escpos-usb": "^3.0.0-alpha.4"
+    "escpos-usb": "^3.0.0-alpha.4",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.0",
