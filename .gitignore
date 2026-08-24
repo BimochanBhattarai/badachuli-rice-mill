@@ -1,0 +1,23 @@
+node_modules/
+out/
+dist/
+.env
+.env.local
+*.local
+
+# SQLite databases (runtime, not source)
+*.db
+*.db-shm
+*.db-wal
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# electron-builder
+release/
