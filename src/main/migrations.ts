@@ -24,7 +24,7 @@ export function runMigrations(db: Database.Database): void {
 
     db.transaction(() => {
       db.exec(sql)
-      db.pragma(`user_version = ${version}`)
+      db.exec(`PRAGMA user_version = ${version}`)
     })()
 
     console.log(`[migration] applied ${file}`)

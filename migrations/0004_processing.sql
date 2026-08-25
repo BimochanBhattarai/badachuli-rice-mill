@@ -1,5 +1,5 @@
 -- Processing rules: define how one input item becomes multiple outputs
-CREATE TABLE processing_rules (
+CREATE TABLE IF NOT EXISTS processing_rules (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
   name             TEXT    NOT NULL,
   input_item_id    INTEGER NOT NULL REFERENCES items(id),
@@ -11,7 +11,7 @@ CREATE TABLE processing_rules (
 );
 
 -- Each output line of a rule (e.g. 65% Chamal, 20% Dhuto, 10% Bhus)
-CREATE TABLE processing_rule_outputs (
+CREATE TABLE IF NOT EXISTS processing_rule_outputs (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
   rule_id           INTEGER NOT NULL REFERENCES processing_rules(id),
   output_item_id    INTEGER NOT NULL REFERENCES items(id),
@@ -22,7 +22,7 @@ CREATE TABLE processing_rule_outputs (
 );
 
 -- A recorded processing run
-CREATE TABLE processing_batches (
+CREATE TABLE IF NOT EXISTS processing_batches (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
   rule_id          INTEGER NOT NULL REFERENCES processing_rules(id),
   input_item_id    INTEGER NOT NULL REFERENCES items(id),
@@ -38,7 +38,7 @@ CREATE TABLE processing_batches (
 );
 
 -- Actual output quantities recorded for each batch
-CREATE TABLE processing_batch_outputs (
+CREATE TABLE IF NOT EXISTS processing_batch_outputs (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
   batch_id          INTEGER NOT NULL REFERENCES processing_batches(id),
   output_item_id    INTEGER NOT NULL REFERENCES items(id),
