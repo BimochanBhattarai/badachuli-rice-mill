@@ -69,6 +69,59 @@ export interface StockLevel {
   balance: number
 }
 
+export interface SupplierRow {
+  id: number
+  name: string
+  phone: string | null
+  address: string | null
+  notes: string | null
+  is_active: number
+  created_at: string
+}
+
+export interface PurchaseLineInput {
+  itemId: number
+  variantId: number | null
+  qty: number
+  unitId: number
+  rate: number
+  lineTotal: number
+}
+
+export interface CreatePurchaseInput {
+  supplierId: number
+  lines: PurchaseLineInput[]
+  notes?: string
+  operatorId: number
+}
+
+export interface PurchaseWithSupplier {
+  id: number
+  supplier_id: number
+  supplier_name: string
+  supplier_phone: string | null
+  status: string
+  notes: string | null
+  total_amount: number
+  line_count: number
+  operator_id: number
+  created_at: string
+}
+
+export interface PurchaseLineWithDetail {
+  id: number
+  order_id: number
+  item_id: number
+  variant_id: number | null
+  qty: number
+  unit_id: number
+  rate: number
+  line_total: number
+  item_name: string
+  variant_name: string | null
+  unit_abbreviation: string
+}
+
 export interface TodaySummary {
   bill_count: number
   total_billed: number
@@ -121,6 +174,20 @@ export interface CustomerLedgerLine {
 
 export interface ElectronAPI {
   ping: () => Promise<string>
+
+  suppliers: {
+    getAll: () => Promise<IpcResult<SupplierRow[]>>
+    search: (query: string) => Promise<IpcResult<SupplierRow[]>>
+    create: (name: string, phone?: string, address?: string, notes?: string) => Promise<IpcResult<{ id: number }>>
+    update: (id: number, name: string, phone?: string, address?: string, notes?: string) => Promise<IpcResult>
+    deactivate: (id: number) => Promise<IpcResult>
+  }
+
+  purchases: {
+    getAll: (limit?: number) => Promise<IpcResult<PurchaseWithSupplier[]>>
+    getLines: (orderId: number) => Promise<IpcResult<PurchaseLineWithDetail[]>>
+    create: (input: CreatePurchaseInput) => Promise<IpcResult<{ orderId: number }>>
+  }
 
   dashboard: {
     getData: () => Promise<IpcResult<DashboardData>>

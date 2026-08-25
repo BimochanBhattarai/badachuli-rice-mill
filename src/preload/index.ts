@@ -86,6 +86,22 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('bills:collectPayment', billId, amount, method, operatorId),
   },
 
+  suppliers: {
+    getAll: () => ipcRenderer.invoke('suppliers:getAll'),
+    search: (query: string) => ipcRenderer.invoke('suppliers:search', query),
+    create: (name: string, phone?: string, address?: string, notes?: string) =>
+      ipcRenderer.invoke('suppliers:create', name, phone, address, notes),
+    update: (id: number, name: string, phone?: string, address?: string, notes?: string) =>
+      ipcRenderer.invoke('suppliers:update', id, name, phone, address, notes),
+    deactivate: (id: number) => ipcRenderer.invoke('suppliers:deactivate', id),
+  },
+
+  purchases: {
+    getAll: (limit?: number) => ipcRenderer.invoke('purchases:getAll', limit),
+    getLines: (orderId: number) => ipcRenderer.invoke('purchases:getLines', orderId),
+    create: (input: unknown) => ipcRenderer.invoke('purchases:create', input),
+  },
+
   dashboard: {
     getData: () => ipcRenderer.invoke('dashboard:getData'),
     getSalesReport: (fromDate: string, toDate: string) =>
