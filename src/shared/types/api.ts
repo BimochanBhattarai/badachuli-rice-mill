@@ -69,8 +69,65 @@ export interface StockLevel {
   balance: number
 }
 
+export interface TodaySummary {
+  bill_count: number
+  total_billed: number
+  total_collected: number
+  new_udharo: number
+}
+
+export interface DashboardData {
+  today: TodaySummary
+  total_outstanding: number
+  stock_item_count: number
+  processing_batches_today: number
+}
+
+export interface SalesReportLine {
+  bill_number: string
+  created_at: string
+  customer_name: string | null
+  grand_total: number
+  paid_amount: number
+  due_amount: number
+  status: string
+}
+
+export interface SalesReport {
+  lines: SalesReportLine[]
+  total_billed: number
+  total_collected: number
+  total_outstanding: number
+  bill_count: number
+}
+
+export interface ItemSalesLine {
+  item_name: string
+  variant_name: string | null
+  unit_abbreviation: string
+  total_qty: number
+  total_revenue: number
+}
+
+export interface CustomerLedgerLine {
+  id: number
+  name: string
+  phone: string | null
+  total_billed: number
+  total_paid: number
+  outstanding: number
+  last_bill_date: string | null
+}
+
 export interface ElectronAPI {
   ping: () => Promise<string>
+
+  dashboard: {
+    getData: () => Promise<IpcResult<DashboardData>>
+    getSalesReport: (fromDate: string, toDate: string) => Promise<IpcResult<SalesReport>>
+    getItemSalesReport: (fromDate: string, toDate: string) => Promise<IpcResult<ItemSalesLine[]>>
+    getCustomerLedger: () => Promise<IpcResult<CustomerLedgerLine[]>>
+  }
 
   auth: {
     isFirstRun: () => Promise<IpcResult<boolean>>

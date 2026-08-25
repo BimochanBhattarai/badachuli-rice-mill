@@ -6,13 +6,15 @@ import UnitsPage from './pages/catalog/UnitsPage'
 import ItemsPage from './pages/catalog/ItemsPage'
 import PricesPage from './pages/catalog/PricesPage'
 import StockPage from './pages/inventory/StockPage'
+import DashboardPage from './pages/DashboardPage'
+import ReportsPage from './pages/ReportsPage'
 import ProcessingPage from './pages/processing/ProcessingPage'
 import NewBillPage from './pages/billing/NewBillPage'
 import CustomersPage from './pages/billing/CustomersPage'
 import BillsPage from './pages/billing/BillsPage'
 
 type AppState = 'loading' | 'setup' | 'login' | 'app'
-type NavPage = 'dashboard' | 'billing' | 'bills' | 'customers' | 'processing' | 'items' | 'prices' | 'stock' | 'units'
+type NavPage = 'dashboard' | 'billing' | 'bills' | 'customers' | 'processing' | 'reports' | 'items' | 'prices' | 'stock' | 'units'
 
 const NAV: { id: NavPage; label: string }[] = [
   { id: 'dashboard',  label: 'Dashboard' },
@@ -20,6 +22,7 @@ const NAV: { id: NavPage; label: string }[] = [
   { id: 'bills',      label: 'Bills' },
   { id: 'customers',  label: 'Customers' },
   { id: 'processing', label: 'Processing' },
+  { id: 'reports',    label: 'Reports' },
   { id: 'items',      label: 'Items' },
   { id: 'prices',     label: 'Prices' },
   { id: 'stock',      label: 'Stock' },
@@ -95,12 +98,8 @@ export default function App() {
         </button>
       </header>
       <main className="app-main">
-        {page === 'dashboard' && (
-          <div className="placeholder-page">
-            <h2>Dashboard</h2>
-            <p>Sales summary and alerts coming in Sprint 2.</p>
-          </div>
-        )}
+        {page === 'dashboard' && <DashboardPage />}
+        {page === 'reports' && <ReportsPage />}
         {page === 'units' && <UnitsPage />}
         {page === 'items' && <ItemsPage />}
         {page === 'prices' && <PricesPage />}

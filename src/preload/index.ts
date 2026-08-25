@@ -86,6 +86,15 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('bills:collectPayment', billId, amount, method, operatorId),
   },
 
+  dashboard: {
+    getData: () => ipcRenderer.invoke('dashboard:getData'),
+    getSalesReport: (fromDate: string, toDate: string) =>
+      ipcRenderer.invoke('dashboard:getSalesReport', fromDate, toDate),
+    getItemSalesReport: (fromDate: string, toDate: string) =>
+      ipcRenderer.invoke('dashboard:getItemSalesReport', fromDate, toDate),
+    getCustomerLedger: () => ipcRenderer.invoke('dashboard:getCustomerLedger'),
+  },
+
   processing: {
     getRules: () => ipcRenderer.invoke('processing:getRules'),
     createRule: (

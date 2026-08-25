@@ -634,6 +634,57 @@ select:focus { border-color: #f97316; }
   width: 120px;
 }
 
+/* ── Dashboard ───────────────────────────────────────────── */
+.dashboard { padding: 0; }
+
+.dashboard-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.dashboard-header h2 { font-size: 1.1rem; }
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.stat-card {
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  padding: 0.9rem 1.1rem;
+  background: #111827;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.stat-label { font-size: 0.75rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; }
+.stat-value { font-size: 1.35rem; font-weight: 700; }
+.stat-sub   { font-size: 0.75rem; color: #4b5563; }
+
+/* ── Reports ─────────────────────────────────────────────── */
+.report-filters {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  background: #0d1117;
+  border: 1px solid #1f2937;
+  border-radius: 6px;
+}
+
+.report-filters input[type="date"] {
+  padding: 0.3rem 0.5rem;
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 4px;
+  color: #f9fafb;
+  font-size: 0.85rem;
+}
+
 /* ── Placeholder ─────────────────────────────────────────── */
 .placeholder-page { color: #4b5563; }
 .placeholder-page h2 { font-size: 1.1rem; margin-bottom: 0.5rem; color: #6b7280; }
