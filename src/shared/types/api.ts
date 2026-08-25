@@ -55,6 +55,17 @@ export interface CurrentPrice extends PriceRow {
   unit_abbreviation: string
 }
 
+export interface StockLevel {
+  item_id: number
+  item_name: string
+  item_category: string
+  variant_id: number | null
+  variant_name: string | null
+  unit_id: number
+  unit_abbreviation: string
+  balance: number
+}
+
 export interface ElectronAPI {
   ping: () => Promise<string>
 
@@ -104,6 +115,20 @@ export interface ElectronAPI {
     create: (itemId: number, name: string, isDefault: boolean) => Promise<IpcResult<{ id: number }>>
     update: (id: number, name: string, isDefault: boolean) => Promise<IpcResult>
     deactivate: (id: number) => Promise<IpcResult>
+  }
+
+  inventory: {
+    getAll: () => Promise<IpcResult<StockLevel[]>>
+    getByItem: (itemId: number) => Promise<IpcResult<StockLevel[]>>
+    addOpening: (
+      itemId: number,
+      variantId: number | null,
+      unitId: number,
+      qty: number,
+      category: string,
+      operatorId: number,
+      notes?: string
+    ) => Promise<IpcResult<{ id: number }>>
   }
 
   prices: {

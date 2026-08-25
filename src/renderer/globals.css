@@ -429,6 +429,10 @@ select:focus { border-color: #f97316; }
   margin-bottom: 0.4rem;
 }
 
+/* ── Stock balance ───────────────────────────────────────── */
+.stock-positive { color: #86efac; font-weight: 600; }
+.stock-zero     { color: #f87171; font-weight: 600; }
+
 /* ── Placeholder ─────────────────────────────────────────── */
 .placeholder-page { color: #4b5563; }
 .placeholder-page h2 { font-size: 1.1rem; margin-bottom: 0.5rem; color: #6b7280; }

@@ -51,6 +51,20 @@ contextBridge.exposeInMainWorld('api', {
     deactivate: (id: number) => ipcRenderer.invoke('variants:deactivate', id),
   },
 
+  inventory: {
+    getAll: () => ipcRenderer.invoke('inventory:getAll'),
+    getByItem: (itemId: number) => ipcRenderer.invoke('inventory:getByItem', itemId),
+    addOpening: (
+      itemId: number,
+      variantId: number | null,
+      unitId: number,
+      qty: number,
+      category: string,
+      operatorId: number,
+      notes?: string
+    ) => ipcRenderer.invoke('inventory:addOpening', itemId, variantId, unitId, qty, category, operatorId, notes),
+  },
+
   prices: {
     getCurrent: (itemId: number) => ipcRenderer.invoke('prices:getCurrent', itemId),
     getHistory: (itemId: number, variantId: number | null, priceType: 'sell' | 'buy') =>
