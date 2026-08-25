@@ -86,6 +86,21 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('bills:collectPayment', billId, amount, method, operatorId),
   },
 
+  processing: {
+    getRules: () => ipcRenderer.invoke('processing:getRules'),
+    createRule: (
+      name: string,
+      inputItemId: number,
+      inputVariantId: number | null,
+      inputUnitId: number,
+      outputs: { outputItemId: number; outputVariantId: number | null; outputUnitId: number; yieldPct: number }[],
+      notes?: string
+    ) => ipcRenderer.invoke('processing:createRule', name, inputItemId, inputVariantId, inputUnitId, outputs, notes),
+    deactivateRule: (id: number) => ipcRenderer.invoke('processing:deactivateRule', id),
+    runBatch: (input: unknown) => ipcRenderer.invoke('processing:runBatch', input),
+    getRecentBatches: (limit?: number) => ipcRenderer.invoke('processing:getRecentBatches', limit),
+  },
+
   prices: {
     getCurrent: (itemId: number) => ipcRenderer.invoke('prices:getCurrent', itemId),
     getHistory: (itemId: number, variantId: number | null, priceType: 'sell' | 'buy') =>

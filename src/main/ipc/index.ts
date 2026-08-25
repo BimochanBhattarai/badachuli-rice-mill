@@ -8,6 +8,7 @@ import { registerPriceHandlers } from './prices'
 import { registerInventoryHandlers } from './inventory'
 import { registerCustomerHandlers } from './customers'
 import { registerBillHandlers } from './bills'
+import { registerProcessingHandlers } from './processing'
 
 export function registerIpcHandlers(db: Database.Database): void {
   registerSettingsHandlers(db)
@@ -18,6 +19,7 @@ export function registerIpcHandlers(db: Database.Database): void {
   registerInventoryHandlers(db)
   registerCustomerHandlers(db)
   registerBillHandlers(db)
+  registerProcessingHandlers(db)
 
   ipcMain.handle('ping', () => 'pong')
 }

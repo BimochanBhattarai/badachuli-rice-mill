@@ -6,22 +6,24 @@ import UnitsPage from './pages/catalog/UnitsPage'
 import ItemsPage from './pages/catalog/ItemsPage'
 import PricesPage from './pages/catalog/PricesPage'
 import StockPage from './pages/inventory/StockPage'
+import ProcessingPage from './pages/processing/ProcessingPage'
 import NewBillPage from './pages/billing/NewBillPage'
 import CustomersPage from './pages/billing/CustomersPage'
 import BillsPage from './pages/billing/BillsPage'
 
 type AppState = 'loading' | 'setup' | 'login' | 'app'
-type NavPage = 'dashboard' | 'billing' | 'bills' | 'customers' | 'items' | 'prices' | 'stock' | 'units'
+type NavPage = 'dashboard' | 'billing' | 'bills' | 'customers' | 'processing' | 'items' | 'prices' | 'stock' | 'units'
 
 const NAV: { id: NavPage; label: string }[] = [
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'billing',   label: 'New Bill' },
-  { id: 'bills',     label: 'Bills' },
-  { id: 'customers', label: 'Customers' },
-  { id: 'items',     label: 'Items' },
-  { id: 'prices',    label: 'Prices' },
-  { id: 'stock',     label: 'Stock' },
-  { id: 'units',     label: 'Units' },
+  { id: 'dashboard',  label: 'Dashboard' },
+  { id: 'billing',    label: 'New Bill' },
+  { id: 'bills',      label: 'Bills' },
+  { id: 'customers',  label: 'Customers' },
+  { id: 'processing', label: 'Processing' },
+  { id: 'items',      label: 'Items' },
+  { id: 'prices',     label: 'Prices' },
+  { id: 'stock',      label: 'Stock' },
+  { id: 'units',      label: 'Units' },
 ]
 
 export default function App() {
@@ -103,6 +105,7 @@ export default function App() {
         {page === 'items' && <ItemsPage />}
         {page === 'prices' && <PricesPage />}
         {page === 'stock' && <StockPage currentUser={currentUser!} />}
+        {page === 'processing' && <ProcessingPage currentUser={currentUser!} />}
         {page === 'billing' && <NewBillPage currentUser={currentUser!} />}
         {page === 'bills' && <BillsPage currentUser={currentUser!} />}
         {page === 'customers' && <CustomersPage />}

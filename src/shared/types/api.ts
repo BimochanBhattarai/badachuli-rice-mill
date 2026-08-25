@@ -159,6 +159,21 @@ export interface ElectronAPI {
     collectPayment: (billId: number, amount: number, method: string, operatorId: number) => Promise<IpcResult>
   }
 
+  processing: {
+    getRules: () => Promise<IpcResult<ProcessingRuleWithDetail[]>>
+    createRule: (
+      name: string,
+      inputItemId: number,
+      inputVariantId: number | null,
+      inputUnitId: number,
+      outputs: { outputItemId: number; outputVariantId: number | null; outputUnitId: number; yieldPct: number }[],
+      notes?: string
+    ) => Promise<IpcResult<{ id: number }>>
+    deactivateRule: (id: number) => Promise<IpcResult>
+    runBatch: (input: RunBatchInput) => Promise<IpcResult<{ batchId: number }>>
+    getRecentBatches: (limit?: number) => Promise<IpcResult<BatchWithRule[]>>
+  }
+
   prices: {
     getCurrent: (itemId: number) => Promise<IpcResult<CurrentPrice[]>>
     getHistory: (
@@ -239,6 +254,68 @@ export interface BillLineWithDetail {
   item_name: string
   variant_name: string | null
   unit_abbreviation: string
+}
+
+export interface ProcessingRuleOutputRow {
+  id: number
+  rule_id: number
+  output_item_id: number
+  output_variant_id: number | null
+  output_unit_id: number
+  yield_pct: number
+  sort_order: number
+  output_item_name: string
+  output_variant_name: string | null
+  output_unit_abbreviation: string
+}
+
+export interface ProcessingRuleWithDetail {
+  id: number
+  name: string
+  input_item_id: number
+  input_variant_id: number | null
+  input_unit_id: number
+  is_active: number
+  notes: string | null
+  created_at: string
+  input_item_name: string
+  input_variant_name: string | null
+  input_unit_abbreviation: string
+  outputs: ProcessingRuleOutputRow[]
+}
+
+export interface BatchOutputInput {
+  outputItemId: number
+  outputVariantId: number | null
+  outputUnitId: number
+  expectedQty: number
+  actualQty: number
+}
+
+export interface RunBatchInput {
+  ruleId: number
+  inputItemId: number
+  inputVariantId: number | null
+  inputUnitId: number
+  inputQty: number
+  batchType: 'in_house' | 'customer'
+  customerId: number | null
+  outputs: BatchOutputInput[]
+  notes?: string
+  operatorId: number
+}
+
+export interface BatchWithRule {
+  id: number
+  rule_name: string
+  input_item_name: string
+  input_variant_name: string | null
+  input_unit_abbreviation: string
+  input_qty: number
+  batch_type: string
+  customer_name: string | null
+  operator_id: number
+  created_at: string
 }
 
 export interface CreateBillInput {
