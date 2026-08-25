@@ -756,6 +756,110 @@ select:focus { border-color: #f97316; }
   gap: 0.75rem;
 }
 
+/* ── Print preview overlay ───────────────────────────────── */
+.print-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.print-preview-box {
+  background: #1c1c1c;
+  border: 1px solid #374151;
+  border-radius: 8px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.print-preview-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+/* ── Receipt component (shared by preview and print) ────────── */
+.receipt {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  width: 72mm;
+  color: #000;
+  background: #fff;
+  padding: 4mm 2mm;
+}
+
+.receipt-center    { text-align: center; margin-bottom: 2px; }
+.receipt-mill-name { font-size: 14px; font-weight: bold; }
+.receipt-detail    { font-size: 11px; }
+.receipt-footer    { font-size: 11px; padding: 2px 0 4px; }
+
+.receipt-divider   { border-bottom: 1px dashed #000; margin: 4px 0; white-space: nowrap; overflow: hidden; font-size: 10px; color: #666; }
+
+.receipt-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 1px 0;
+}
+.receipt-row-total {
+  font-weight: bold;
+  border-top: 1px solid #000;
+  margin-top: 2px;
+  padding-top: 2px;
+}
+.receipt-row-due { font-weight: bold; }
+
+.receipt-line-header {
+  display: flex;
+  font-size: 10px;
+  color: #555;
+  padding: 1px 0;
+}
+.receipt-line      { margin: 2px 0; }
+.receipt-item-name { font-size: 11px; }
+.receipt-line-nums { display: flex; }
+.receipt-line-discount { font-size: 10px; color: #555; padding-left: 4px; }
+
+.receipt-col-item  { flex: 1; }
+.receipt-col-qty   { width: 28px; text-align: right; }
+.receipt-col-rate  { width: 40px; text-align: right; }
+.receipt-col-total { width: 52px; text-align: right; }
+
+/* Hidden root that becomes visible only during printing */
+.print-receipt-root { display: none; }
+
+/* ── @media print ────────────────────────────────────────── */
+@media print {
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
+
+  /* Hide everything */
+  body > * { display: none !important; }
+
+  /* Show only the receipt */
+  .print-receipt-root {
+    display: block !important;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 80mm;
+  }
+
+  .print-receipt-root .receipt {
+    width: 76mm;
+    padding: 3mm 2mm;
+  }
+}
+
 /* ── Placeholder ─────────────────────────────────────────── */
 .placeholder-page { color: #4b5563; }
 .placeholder-page h2 { font-size: 1.1rem; margin-bottom: 0.5rem; color: #6b7280; }

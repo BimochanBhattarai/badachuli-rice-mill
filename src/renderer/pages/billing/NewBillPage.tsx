@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import type {
   AuthUser, CustomerWithBalance, ItemRow, VariantRow, UnitRow,
-  BillLineInput, CreateBillInput,
+  BillLineInput, CreateBillInput, BillWithCustomer, BillLineWithDetail,
 } from '../../../shared/types/api'
+import PrintReceipt from '../../components/PrintReceipt'
 
 interface Props { currentUser: AuthUser }
 
@@ -48,6 +49,9 @@ export default function NewBillPage({ currentUser }: Props) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [successMsg, setSuccessMsg] = useState('')
+
+  const [printBill, setPrintBill] = useState<BillWithCustomer | null>(null)
+  const [printLines, setPrintLines] = useState<BillLineWithDetail[]>([])
 
   const itemSearchRef = useRef<HTMLInputElement>(null)
 
@@ -199,7 +203,19 @@ export default function NewBillPage({ currentUser }: Props) {
       const res = await window.api.bills.create(input)
       if (!res.ok) { setError(res.error ?? 'Unknown error'); return }
 
-      setSuccessMsg(`Bill ${res.data!.billNumber} saved`)
+      const { billId, billNumber } = res.data!
+      setSuccessMsg(`Bill ${billNumber} saved`)
+
+      // Load the saved bill for printing
+      const [billRes, linesRes] = await Promise.all([
+        window.api.bills.getById(billId),
+        window.api.bills.getLines(billId),
+      ])
+      if (billRes.ok && billRes.data) {
+        setPrintBill(billRes.data)
+        setPrintLines(linesRes.data ?? [])
+      }
+
       setLines([])
       setCustomer(null)
       setCustomerSearch('')
@@ -217,6 +233,13 @@ export default function NewBillPage({ currentUser }: Props) {
 
   return (
     <div className="bill-layout">
+      {printBill && (
+        <PrintReceipt
+          bill={printBill}
+          lines={printLines}
+          onClose={() => setPrintBill(null)}
+        />
+      )}
       {/* ── Left: item entry ── */}
       <div className="bill-entry">
         <div className="bill-entry-header">

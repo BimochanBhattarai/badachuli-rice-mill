@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { AuthUser, BillWithCustomer, BillLineWithDetail } from '../../../shared/types/api'
+import PrintReceipt from '../../components/PrintReceipt'
 
 interface Props { currentUser: AuthUser }
 
@@ -19,6 +20,10 @@ export default function BillsPage({ currentUser }: Props) {
   const [collectMethod, setCollectMethod] = useState('cash')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  // Print state
+  const [printBill, setPrintBill] = useState<BillWithCustomer | null>(null)
+  const [printLines, setPrintLines] = useState<BillLineWithDetail[]>([])
 
   async function load() {
     const res = await window.api.bills.getAll(100)
@@ -44,6 +49,17 @@ export default function BillsPage({ currentUser }: Props) {
     setCollectAmount(String(bill.due_amount.toFixed(2)))
     setCollectMethod('cash')
     setError('')
+  }
+
+  async function openPrint(bill: BillWithCustomer) {
+    let billLines = linesCache[bill.id]
+    if (!billLines) {
+      const res = await window.api.bills.getLines(bill.id)
+      billLines = res.data ?? []
+      setLinesCache(prev => ({ ...prev, [bill.id]: billLines }))
+    }
+    setPrintBill(bill)
+    setPrintLines(billLines)
   }
 
   function cancelCollect() {
@@ -77,6 +93,14 @@ export default function BillsPage({ currentUser }: Props) {
 
   return (
     <div className="catalog-page">
+      {printBill && (
+        <PrintReceipt
+          bill={printBill}
+          lines={printLines}
+          onClose={() => setPrintBill(null)}
+        />
+      )}
+
       <div className="catalog-header">
         <h2>Bills</h2>
         <span className="text-muted" style={{ fontSize: '0.85rem' }}>
@@ -117,6 +141,7 @@ export default function BillsPage({ currentUser }: Props) {
               onAmountChange={setCollectAmount}
               onMethodChange={setCollectMethod}
               onSubmitCollect={() => submitCollect(bill)}
+              onPrint={() => openPrint(bill)}
               fmt={fmt}
               fmtDate={fmtDate}
             />
@@ -142,6 +167,7 @@ interface BillRowProps {
   onAmountChange: (v: string) => void
   onMethodChange: (v: string) => void
   onSubmitCollect: () => void
+  onPrint: () => void
   fmt: (n: number) => string
   fmtDate: (s: string) => string
 }
@@ -150,7 +176,7 @@ function BillRow({
   bill, expanded, lines, collecting,
   collectAmount, collectMethod, saving, error,
   onToggle, onOpenCollect, onCancelCollect,
-  onAmountChange, onMethodChange, onSubmitCollect,
+  onAmountChange, onMethodChange, onSubmitCollect, onPrint,
   fmt, fmtDate,
 }: BillRowProps) {
   return (
@@ -170,6 +196,7 @@ function BillRow({
           {bill.due_amount > 0 && (
             <button className="btn-primary btn-sm" onClick={onOpenCollect}>Collect</button>
           )}
+          <button className="btn-ghost btn-sm" onClick={onPrint} title="Print receipt">🖨</button>
           <button className="btn-ghost btn-sm">{expanded ? '▲' : '▼'}</button>
         </td>
       </tr>
