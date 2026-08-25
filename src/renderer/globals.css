@@ -429,6 +429,13 @@ select:focus { border-color: #f97316; }
   margin-bottom: 0.4rem;
 }
 
+/* ── Field hints ─────────────────────────────────────────── */
+.field-hint {
+  font-size: 0.75rem;
+  color: #f97316;
+  margin-top: 0.2rem;
+}
+
 /* ── Stock balance ───────────────────────────────────────── */
 .stock-positive { color: #86efac; font-weight: 600; }
 .stock-zero     { color: #f87171; font-weight: 600; }

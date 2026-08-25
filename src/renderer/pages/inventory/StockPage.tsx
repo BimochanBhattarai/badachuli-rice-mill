@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { AuthUser, ItemRow, VariantRow, UnitRow, StockLevel } from '../../../shared/types/api'
+import type { AuthUser, ItemRow, VariantRow, UnitRow, StockLevel, CurrentPrice } from '../../../shared/types/api'
 
 interface Props {
   currentUser: AuthUser
@@ -10,6 +10,7 @@ interface OpeningForm {
   variantId: string
   unitId: string
   qty: string
+  price: string
   notes: string
 }
 
@@ -18,7 +19,12 @@ const EMPTY_FORM: OpeningForm = {
   variantId: '',
   unitId: '',
   qty: '',
+  price: '',
   notes: '',
+}
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10)
 }
 
 export default function StockPage({ currentUser }: Props) {
@@ -30,6 +36,7 @@ export default function StockPage({ currentUser }: Props) {
 
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState<OpeningForm>(EMPTY_FORM)
+  const [originalPrice, setOriginalPrice] = useState<string>('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -53,28 +60,77 @@ export default function StockPage({ currentUser }: Props) {
     window.api.items.getAll().then(r => { if (r.ok && r.data) setItems(r.data) })
   }, [])
 
+  async function fetchPrice(itemId: number, variantId: number | null, unitId: number) {
+    const res = await window.api.prices.getCurrent(itemId)
+    if (!res.ok || !res.data) return ''
+    const match = res.data.find(
+      (p: CurrentPrice) =>
+        p.price_type === 'sell' &&
+        p.unit_id === unitId &&
+        (variantId ? p.variant_id === variantId : p.variant_id === null)
+    )
+    return match ? String(match.price) : ''
+  }
+
   async function onItemChange(itemId: string) {
-    setForm(f => ({ ...f, itemId, variantId: '' }))
     setVariants([])
-    if (!itemId) return
-    const res = await window.api.variants.getByItem(parseInt(itemId))
-    if (res.ok && res.data) {
-      const active = res.data.filter(v => v.is_active)
-      setVariants(active)
-      const def = active.find(v => v.is_default) ?? active[0]
-      const item = items.find(i => i.id === parseInt(itemId))
-      setForm(f => ({
-        ...f,
-        itemId,
-        variantId: def ? String(def.id) : '',
-        unitId: item ? String(item.default_unit_id) : f.unitId,
-      }))
+    if (!itemId) {
+      setForm(f => ({ ...f, itemId, variantId: '', price: '' }))
+      setOriginalPrice('')
+      return
     }
+
+    const [vRes] = await Promise.all([
+      window.api.variants.getByItem(parseInt(itemId)),
+    ])
+
+    const active = (vRes.data ?? []).filter(v => v.is_active)
+    setVariants(active)
+
+    const defVariant = active.find(v => v.is_default) ?? active[0]
+    const item = items.find(i => i.id === parseInt(itemId))
+    const unitId = item ? item.default_unit_id : parseInt(form.unitId)
+    const variantId = defVariant ? defVariant.id : null
+
+    const price = await fetchPrice(parseInt(itemId), variantId, unitId)
+    setOriginalPrice(price)
+    setForm(f => ({
+      ...f,
+      itemId,
+      variantId: defVariant ? String(defVariant.id) : '',
+      unitId: String(unitId),
+      price,
+    }))
+  }
+
+  async function onVariantChange(variantId: string) {
+    setForm(f => ({ ...f, variantId }))
+    if (!form.itemId) return
+    const price = await fetchPrice(
+      parseInt(form.itemId),
+      variantId ? parseInt(variantId) : null,
+      parseInt(form.unitId)
+    )
+    setOriginalPrice(price)
+    setForm(f => ({ ...f, variantId, price }))
+  }
+
+  async function onUnitChange(unitId: string) {
+    setForm(f => ({ ...f, unitId }))
+    if (!form.itemId) return
+    const price = await fetchPrice(
+      parseInt(form.itemId),
+      form.variantId ? parseInt(form.variantId) : null,
+      parseInt(unitId)
+    )
+    setOriginalPrice(price)
+    setForm(f => ({ ...f, unitId, price }))
   }
 
   function openForm() {
     const defUnit = units.find(u => u.is_default) ?? units[0]
     setForm({ ...EMPTY_FORM, unitId: defUnit ? String(defUnit.id) : '' })
+    setOriginalPrice('')
     setVariants([])
     setError('')
     setShowForm(true)
@@ -83,12 +139,14 @@ export default function StockPage({ currentUser }: Props) {
   function cancel() {
     setShowForm(false)
     setForm(EMPTY_FORM)
+    setOriginalPrice('')
     setError('')
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
+
     const qty = parseFloat(form.qty)
     if (isNaN(qty) || qty <= 0) { setError('Quantity must be greater than zero'); return }
     const itemId = parseInt(form.itemId)
@@ -100,9 +158,16 @@ export default function StockPage({ currentUser }: Props) {
     const item = items.find(i => i.id === itemId)
     if (!item) { setError('Item not found'); return }
 
+    const price = form.price !== '' ? parseFloat(form.price) : null
+    if (price !== null && (isNaN(price) || price < 0)) {
+      setError('Price must be 0 or above')
+      return
+    }
+
     setSaving(true)
     try {
-      const res = await window.api.inventory.addOpening(
+      // Save stock
+      const stockRes = await window.api.inventory.addOpening(
         itemId,
         variantId,
         unitId,
@@ -111,7 +176,21 @@ export default function StockPage({ currentUser }: Props) {
         currentUser.id,
         form.notes || undefined
       )
-      if (!res.ok) { setError(res.error ?? 'Unknown error'); return }
+      if (!stockRes.ok) { setError(stockRes.error ?? 'Unknown error'); return }
+
+      // Save price only if provided and different from what was loaded
+      if (price !== null && String(price) !== originalPrice) {
+        const priceRes = await window.api.prices.set(
+          itemId,
+          variantId,
+          unitId,
+          price,
+          'sell',
+          today()
+        )
+        if (!priceRes.ok) { setError(`Stock saved but price failed: ${priceRes.error}`); return }
+      }
+
       cancel()
       loadStock()
     } catch (err) {
@@ -161,7 +240,7 @@ export default function StockPage({ currentUser }: Props) {
                   Variant
                   <select
                     value={form.variantId}
-                    onChange={e => setForm(f => ({ ...f, variantId: e.target.value }))}
+                    onChange={e => onVariantChange(e.target.value)}
                   >
                     {variants.map(v => (
                       <option key={v.id} value={v.id}>{v.name}</option>
@@ -187,13 +266,28 @@ export default function StockPage({ currentUser }: Props) {
                 Unit
                 <select
                   value={form.unitId}
-                  onChange={e => setForm(f => ({ ...f, unitId: e.target.value }))}
+                  onChange={e => onUnitChange(e.target.value)}
                   required
                 >
                   {units.map(u => (
                     <option key={u.id} value={u.id}>{u.name} ({u.abbreviation})</option>
                   ))}
                 </select>
+              </label>
+
+              <label>
+                Sell Price (Rs.)
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={form.price}
+                  onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
+                  placeholder={originalPrice ? `Current: ${originalPrice}` : 'No price set'}
+                />
+                {form.price !== '' && form.price !== originalPrice && (
+                  <span className="field-hint">Will update the sell price</span>
+                )}
               </label>
 
               <label>
