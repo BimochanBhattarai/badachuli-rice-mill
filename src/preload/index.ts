@@ -65,6 +65,25 @@ contextBridge.exposeInMainWorld('api', {
     ) => ipcRenderer.invoke('inventory:addOpening', itemId, variantId, unitId, qty, category, operatorId, notes),
   },
 
+  customers: {
+    getAll: () => ipcRenderer.invoke('customers:getAll'),
+    search: (query: string) => ipcRenderer.invoke('customers:search', query),
+    getById: (id: number) => ipcRenderer.invoke('customers:getById', id),
+    create: (name: string, phone?: string, address?: string, notes?: string) =>
+      ipcRenderer.invoke('customers:create', name, phone, address, notes),
+    update: (id: number, name: string, phone?: string, address?: string, notes?: string) =>
+      ipcRenderer.invoke('customers:update', id, name, phone, address, notes),
+    deactivate: (id: number) => ipcRenderer.invoke('customers:deactivate', id),
+  },
+
+  bills: {
+    getNextNumber: () => ipcRenderer.invoke('bills:getNextNumber'),
+    getAll: (limit?: number) => ipcRenderer.invoke('bills:getAll', limit),
+    getById: (id: number) => ipcRenderer.invoke('bills:getById', id),
+    getLines: (billId: number) => ipcRenderer.invoke('bills:getLines', billId),
+    create: (input: unknown) => ipcRenderer.invoke('bills:create', input),
+  },
+
   prices: {
     getCurrent: (itemId: number) => ipcRenderer.invoke('prices:getCurrent', itemId),
     getHistory: (itemId: number, variantId: number | null, priceType: 'sell' | 'buy') =>

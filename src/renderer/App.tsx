@@ -6,12 +6,16 @@ import UnitsPage from './pages/catalog/UnitsPage'
 import ItemsPage from './pages/catalog/ItemsPage'
 import PricesPage from './pages/catalog/PricesPage'
 import StockPage from './pages/inventory/StockPage'
+import NewBillPage from './pages/billing/NewBillPage'
+import CustomersPage from './pages/billing/CustomersPage'
 
 type AppState = 'loading' | 'setup' | 'login' | 'app'
-type NavPage = 'dashboard' | 'items' | 'prices' | 'stock' | 'units'
+type NavPage = 'dashboard' | 'billing' | 'customers' | 'items' | 'prices' | 'stock' | 'units'
 
 const NAV: { id: NavPage; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
+  { id: 'billing', label: 'New Bill' },
+  { id: 'customers', label: 'Customers' },
   { id: 'items', label: 'Items' },
   { id: 'prices', label: 'Prices' },
   { id: 'stock', label: 'Stock' },
@@ -97,6 +101,8 @@ export default function App() {
         {page === 'items' && <ItemsPage />}
         {page === 'prices' && <PricesPage />}
         {page === 'stock' && <StockPage currentUser={currentUser!} />}
+        {page === 'billing' && <NewBillPage currentUser={currentUser!} />}
+        {page === 'customers' && <CustomersPage />}
       </main>
     </div>
   )

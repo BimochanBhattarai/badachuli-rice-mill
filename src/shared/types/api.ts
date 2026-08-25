@@ -141,6 +141,23 @@ export interface ElectronAPI {
     ) => Promise<IpcResult<{ id: number }>>
   }
 
+  customers: {
+    getAll: () => Promise<IpcResult<CustomerWithBalance[]>>
+    search: (query: string) => Promise<IpcResult<CustomerWithBalance[]>>
+    getById: (id: number) => Promise<IpcResult<CustomerWithBalance>>
+    create: (name: string, phone?: string, address?: string, notes?: string) => Promise<IpcResult<{ id: number }>>
+    update: (id: number, name: string, phone?: string, address?: string, notes?: string) => Promise<IpcResult>
+    deactivate: (id: number) => Promise<IpcResult>
+  }
+
+  bills: {
+    getNextNumber: () => Promise<IpcResult<{ billNumber: string }>>
+    getAll: (limit?: number) => Promise<IpcResult<BillWithCustomer[]>>
+    getById: (id: number) => Promise<IpcResult<BillWithCustomer>>
+    getLines: (billId: number) => Promise<IpcResult<BillLineWithDetail[]>>
+    create: (input: CreateBillInput) => Promise<IpcResult<{ billId: number; billNumber: string }>>
+  }
+
   prices: {
     getCurrent: (itemId: number) => Promise<IpcResult<CurrentPrice[]>>
     getHistory: (
@@ -157,6 +174,81 @@ export interface ElectronAPI {
       effectiveFrom: string
     ) => Promise<IpcResult<{ id: number }>>
   }
+}
+
+export interface CustomerRow {
+  id: number
+  name: string
+  phone: string | null
+  address: string | null
+  notes: string | null
+  is_active: number
+  created_at: string
+}
+
+export interface CustomerWithBalance extends CustomerRow {
+  total_billed: number
+  total_paid: number
+  outstanding: number
+}
+
+export interface BillRow {
+  id: number
+  bill_number: string
+  bill_type: 'sale' | 'processing'
+  status: 'draft' | 'active' | 'cancelled'
+  customer_id: number | null
+  subtotal: number
+  discount_amount: number
+  grand_total: number
+  paid_amount: number
+  due_amount: number
+  notes: string | null
+  operator_id: number
+  created_at: string
+}
+
+export interface BillWithCustomer extends BillRow {
+  customer_name: string | null
+  customer_phone: string | null
+}
+
+export interface BillLineInput {
+  itemId: number
+  variantId: number | null
+  qty: number
+  unitId: number
+  rateSnapshot: number
+  lineDiscount: number
+  lineTotal: number
+  sortOrder: number
+}
+
+export interface BillLineWithDetail {
+  id: number
+  bill_id: number
+  item_id: number
+  variant_id: number | null
+  qty: number
+  unit_id: number
+  rate_snapshot: number
+  line_discount: number
+  line_total: number
+  sort_order: number
+  item_name: string
+  variant_name: string | null
+  unit_abbreviation: string
+}
+
+export interface CreateBillInput {
+  billType: 'sale' | 'processing'
+  customerId: number | null
+  lines: BillLineInput[]
+  discountAmount: number
+  paidAmount: number
+  paymentMethod: 'cash' | 'bank' | 'digital' | 'credit'
+  notes?: string
+  operatorId: number
 }
 
 declare global {
