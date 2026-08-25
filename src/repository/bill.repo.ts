@@ -152,6 +152,30 @@ export function getBillById(db: Database.Database, id: number): BillWithCustomer
   ).get(id) as BillWithCustomer | undefined
 }
 
+export function addPayment(
+  db: Database.Database,
+  billId: number,
+  amount: number,
+  method: 'cash' | 'bank' | 'digital' | 'credit',
+  operatorId: number
+): void {
+  db.transaction(() => {
+    const bill = getBillById(db, billId)
+    if (!bill) throw new Error('Bill not found')
+    if (bill.due_amount <= 0) throw new Error('No outstanding balance on this bill')
+    const collecting = Math.min(amount, bill.due_amount)
+
+    db.prepare(
+      `INSERT INTO payments (bill_id, customer_id, amount, method, operator_id)
+       VALUES (?, ?, ?, ?, ?)`
+    ).run(billId, bill.customer_id, collecting, method, operatorId)
+
+    db.prepare(
+      `UPDATE bills SET paid_amount = paid_amount + ?, due_amount = due_amount - ? WHERE id = ?`
+    ).run(collecting, collecting, billId)
+  })()
+}
+
 export function getBillLines(db: Database.Database, billId: number): BillLineWithDetail[] {
   return db.prepare(
     `SELECT bl.*,

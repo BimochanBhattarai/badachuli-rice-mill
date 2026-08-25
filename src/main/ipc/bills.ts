@@ -6,6 +6,7 @@ import {
   getBillById,
   getBillLines,
   getNextBillNumber,
+  addPayment,
 } from '../../repository/bill.repo'
 import type { IpcResult } from '../../shared/types/api'
 import type { BillWithCustomer, BillLineWithDetail, CreateBillInput } from '../../repository/bill.repo'
@@ -44,6 +45,18 @@ export function registerBillHandlers(db: Database.Database): void {
       return { ok: false, error: String(e) }
     }
   })
+
+  ipcMain.handle(
+    'bills:collectPayment',
+    (_e, billId: number, amount: number, method: string, operatorId: number): IpcResult => {
+      try {
+        addPayment(db, billId, amount, method as 'cash' | 'bank' | 'digital' | 'credit', operatorId)
+        return { ok: true }
+      } catch (e) {
+        return { ok: false, error: String(e) }
+      }
+    }
+  )
 
   ipcMain.handle(
     'bills:create',

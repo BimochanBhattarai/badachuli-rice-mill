@@ -156,6 +156,7 @@ export interface ElectronAPI {
     getById: (id: number) => Promise<IpcResult<BillWithCustomer>>
     getLines: (billId: number) => Promise<IpcResult<BillLineWithDetail[]>>
     create: (input: CreateBillInput) => Promise<IpcResult<{ billId: number; billNumber: string }>>
+    collectPayment: (billId: number, amount: number, method: string, operatorId: number) => Promise<IpcResult>
   }
 
   prices: {

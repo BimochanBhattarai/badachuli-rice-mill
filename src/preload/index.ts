@@ -82,6 +82,8 @@ contextBridge.exposeInMainWorld('api', {
     getById: (id: number) => ipcRenderer.invoke('bills:getById', id),
     getLines: (billId: number) => ipcRenderer.invoke('bills:getLines', billId),
     create: (input: unknown) => ipcRenderer.invoke('bills:create', input),
+    collectPayment: (billId: number, amount: number, method: string, operatorId: number) =>
+      ipcRenderer.invoke('bills:collectPayment', billId, amount, method, operatorId),
   },
 
   prices: {
