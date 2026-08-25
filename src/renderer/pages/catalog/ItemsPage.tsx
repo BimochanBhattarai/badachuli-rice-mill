@@ -48,7 +48,11 @@ export default function ItemsPage() {
 
   async function loadUnits() {
     const res = await window.api.units.getAll()
-    if (res.ok && res.data) setUnits(res.data)
+    if (res.ok && res.data) {
+      setUnits(res.data)
+      const def = res.data.find(u => u.is_default)
+      if (def) setItemForm(f => ({ ...f, defaultUnitId: String(def.id) }))
+    }
   }
 
   useEffect(() => { loadUnits() }, [])
@@ -74,7 +78,8 @@ export default function ItemsPage() {
 
   function openCreateItem() {
     setEditingItemId(null)
-    setItemForm({ ...EMPTY_ITEM, defaultUnitId: units[0]?.id ? String(units[0].id) : '' })
+    const defaultUnit = units.find(u => u.is_default) ?? units[0]
+    setItemForm({ ...EMPTY_ITEM, defaultUnitId: defaultUnit?.id ? String(defaultUnit.id) : '' })
     setItemError('')
     setShowItemForm(true)
   }

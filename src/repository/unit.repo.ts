@@ -5,10 +5,22 @@ export interface UnitRow {
   name: string
   abbreviation: string
   base_factor: number
+  is_default: number
 }
 
 export function getAllUnits(db: Database.Database): UnitRow[] {
-  return db.prepare('SELECT * FROM units ORDER BY name').all() as UnitRow[]
+  return db.prepare('SELECT * FROM units ORDER BY is_default DESC, name').all() as UnitRow[]
+}
+
+export function getDefaultUnit(db: Database.Database): UnitRow | undefined {
+  return db.prepare('SELECT * FROM units WHERE is_default = 1 LIMIT 1').get() as UnitRow | undefined
+}
+
+export function setDefaultUnit(db: Database.Database, id: number): void {
+  db.transaction(() => {
+    db.prepare('UPDATE units SET is_default = 0').run()
+    db.prepare('UPDATE units SET is_default = 1 WHERE id = ?').run(id)
+  })()
 }
 
 export function getUnitById(db: Database.Database, id: number): UnitRow | undefined {

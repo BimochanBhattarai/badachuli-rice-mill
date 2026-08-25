@@ -15,6 +15,7 @@ export interface UnitRow {
   name: string
   abbreviation: string
   base_factor: number
+  is_default: number
 }
 
 export interface ItemRow {
@@ -75,6 +76,8 @@ export interface ElectronAPI {
     create: (name: string, abbreviation: string, baseFactor: number) => Promise<IpcResult<{ id: number }>>
     update: (id: number, name: string, abbreviation: string, baseFactor: number) => Promise<IpcResult>
     delete: (id: number) => Promise<IpcResult>
+    getDefault: () => Promise<IpcResult<UnitRow>>
+    setDefault: (id: number) => Promise<IpcResult>
   }
 
   items: {

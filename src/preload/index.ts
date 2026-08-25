@@ -25,6 +25,8 @@ contextBridge.exposeInMainWorld('api', {
     update: (id: number, name: string, abbreviation: string, baseFactor: number) =>
       ipcRenderer.invoke('units:update', id, name, abbreviation, baseFactor),
     delete: (id: number) => ipcRenderer.invoke('units:delete', id),
+    getDefault: () => ipcRenderer.invoke('units:getDefault'),
+    setDefault: (id: number) => ipcRenderer.invoke('units:setDefault', id),
   },
 
   items: {

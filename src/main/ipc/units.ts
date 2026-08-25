@@ -6,6 +6,8 @@ import {
   createUnit,
   updateUnit,
   deleteUnit,
+  getDefaultUnit,
+  setDefaultUnit,
 } from '../../repository/unit.repo'
 import type { IpcResult } from '../../shared/types/api'
 import type { UnitRow } from '../../repository/unit.repo'
@@ -67,6 +69,27 @@ export function registerUnitHandlers(db: Database.Database): void {
     try {
       const deleted = deleteUnit(db, id)
       if (!deleted) return { ok: false, error: 'Unit is in use and cannot be deleted' }
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: String(e) }
+    }
+  })
+
+  ipcMain.handle('units:getDefault', (): IpcResult<UnitRow> => {
+    try {
+      const unit = getDefaultUnit(db)
+      if (!unit) return { ok: false, error: 'No default unit set' }
+      return { ok: true, data: unit }
+    } catch (e) {
+      return { ok: false, error: String(e) }
+    }
+  })
+
+  ipcMain.handle('units:setDefault', (_e, id: number): IpcResult => {
+    try {
+      const unit = getUnitById(db, id)
+      if (!unit) return { ok: false, error: 'Unit not found' }
+      setDefaultUnit(db, id)
       return { ok: true }
     } catch (e) {
       return { ok: false, error: String(e) }

@@ -79,6 +79,16 @@ export default function UnitsPage() {
     }
   }
 
+  async function handleSetDefault(id: number) {
+    try {
+      const res = await window.api.units.setDefault(id)
+      if (!res.ok) { alert(res.error); return }
+      load()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'IPC error')
+    }
+  }
+
   return (
     <div className="catalog-page">
       <div className="catalog-header">
@@ -141,21 +151,34 @@ export default function UnitsPage() {
             <th>Name</th>
             <th>Abbr</th>
             <th>Base Factor</th>
+            <th>Default</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
           {units.length === 0 && (
-            <tr><td colSpan={4} className="empty-state">No units defined</td></tr>
+            <tr><td colSpan={5} className="empty-state">No units defined</td></tr>
           )}
           {units.map(u => (
             <tr key={u.id}>
               <td>{u.name}</td>
               <td><code>{u.abbreviation}</code></td>
               <td>{u.base_factor}</td>
+              <td>
+                {u.is_default
+                  ? <span className="badge-default">Default</span>
+                  : (
+                    <button className="btn-ghost btn-sm" onClick={() => handleSetDefault(u.id)}>
+                      Set default
+                    </button>
+                  )
+                }
+              </td>
               <td className="row-actions">
                 <button className="btn-ghost btn-sm" onClick={() => openEdit(u)}>Edit</button>
-                <button className="btn-danger btn-sm" onClick={() => handleDelete(u.id)}>Delete</button>
+                {!u.is_default && (
+                  <button className="btn-danger btn-sm" onClick={() => handleDelete(u.id)}>Delete</button>
+                )}
               </td>
             </tr>
           ))}

@@ -35,7 +35,13 @@ export default function PricesPage() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    window.api.units.getAll().then(r => { if (r.ok && r.data) setUnits(r.data) })
+    window.api.units.getAll().then(r => {
+      if (r.ok && r.data) {
+        setUnits(r.data)
+        const def = r.data.find(u => u.is_default)
+        if (def) setForm(f => ({ ...f, unitId: String(def.id) }))
+      }
+    })
   }, [])
 
   useEffect(() => {
