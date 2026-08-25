@@ -7,11 +7,17 @@ export interface TodaySummary {
   new_udharo: number
 }
 
+export interface WeeklySalesDay {
+  date: string
+  total: number
+}
+
 export interface DashboardData {
   today: TodaySummary
   total_outstanding: number
   stock_item_count: number
   processing_batches_today: number
+  weekly_sales: WeeklySalesDay[]
 }
 
 export function getDashboardData(db: Database.Database): DashboardData {
@@ -41,11 +47,31 @@ export function getDashboardData(db: Database.Database): DashboardData {
     `SELECT COUNT(*) as cnt FROM processing_batches WHERE DATE(created_at) = ?`
   ).get(today) as { cnt: number }
 
+  // Build last 7 days array, filling zeros for days with no sales
+  const weeklySales = db.prepare(
+    `SELECT DATE(created_at) as date, COALESCE(SUM(grand_total), 0) as total
+     FROM bills
+     WHERE status = 'active'
+       AND DATE(created_at) >= DATE('now', '-6 days')
+     GROUP BY DATE(created_at)
+     ORDER BY date ASC`
+  ).all() as WeeklySalesDay[]
+
+  // Ensure all 7 days are present
+  const salesMap = new Map(weeklySales.map(r => [r.date, r.total]))
+  const weekly_sales: WeeklySalesDay[] = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date()
+    d.setDate(d.getDate() - (6 - i))
+    const dateStr = d.toISOString().slice(0, 10)
+    return { date: dateStr, total: salesMap.get(dateStr) ?? 0 }
+  })
+
   return {
     today: todayRow,
     total_outstanding: outstandingRow.total,
     stock_item_count: stockRow.cnt,
     processing_batches_today: batchRow.cnt,
+    weekly_sales,
   }
 }
 

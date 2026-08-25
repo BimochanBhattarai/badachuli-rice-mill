@@ -129,11 +129,17 @@ export interface TodaySummary {
   new_udharo: number
 }
 
+export interface WeeklySalesDay {
+  date: string
+  total: number
+}
+
 export interface DashboardData {
   today: TodaySummary
   total_outstanding: number
   stock_item_count: number
   processing_batches_today: number
+  weekly_sales: WeeklySalesDay[]
 }
 
 export interface SalesReportLine {
