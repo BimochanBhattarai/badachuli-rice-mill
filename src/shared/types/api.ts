@@ -36,6 +36,24 @@ export interface VariantRow {
   is_active: number
 }
 
+export interface PriceRow {
+  id: number
+  item_id: number
+  variant_id: number | null
+  unit_id: number
+  price: number
+  price_type: 'sell' | 'buy'
+  effective_from: string
+  effective_to: string | null
+  created_at: string
+}
+
+export interface CurrentPrice extends PriceRow {
+  item_name: string
+  variant_name: string | null
+  unit_abbreviation: string
+}
+
 export interface ElectronAPI {
   ping: () => Promise<string>
 
@@ -83,6 +101,23 @@ export interface ElectronAPI {
     create: (itemId: number, name: string, isDefault: boolean) => Promise<IpcResult<{ id: number }>>
     update: (id: number, name: string, isDefault: boolean) => Promise<IpcResult>
     deactivate: (id: number) => Promise<IpcResult>
+  }
+
+  prices: {
+    getCurrent: (itemId: number) => Promise<IpcResult<CurrentPrice[]>>
+    getHistory: (
+      itemId: number,
+      variantId: number | null,
+      priceType: 'sell' | 'buy'
+    ) => Promise<IpcResult<PriceRow[]>>
+    set: (
+      itemId: number,
+      variantId: number | null,
+      unitId: number,
+      price: number,
+      priceType: 'sell' | 'buy',
+      effectiveFrom: string
+    ) => Promise<IpcResult<{ id: number }>>
   }
 }
 

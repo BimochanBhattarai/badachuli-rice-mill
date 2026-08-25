@@ -103,21 +103,30 @@ export default function ItemsPage() {
     const unitId = parseInt(itemForm.defaultUnitId)
     if (!unitId) { setItemError('Please select a default unit'); return }
     setItemLoading(true)
-    const res =
-      editingItemId !== null
-        ? await window.api.items.update(editingItemId, itemForm.name, itemForm.category, unitId)
-        : await window.api.items.create(itemForm.name, itemForm.category, unitId)
-    setItemLoading(false)
-    if (!res.ok) { setItemError(res.error ?? 'Unknown error'); return }
-    cancelItem()
-    loadItems()
+    try {
+      const res =
+        editingItemId !== null
+          ? await window.api.items.update(editingItemId, itemForm.name, itemForm.category, unitId)
+          : await window.api.items.create(itemForm.name, itemForm.category, unitId)
+      if (!res.ok) { setItemError(res.error ?? 'Unknown error'); return }
+      cancelItem()
+      loadItems()
+    } catch (err) {
+      setItemError(err instanceof Error ? err.message : 'IPC error — try restarting the app')
+    } finally {
+      setItemLoading(false)
+    }
   }
 
   async function handleDeactivateItem(id: number) {
     if (!confirm('Archive this item? It will no longer appear in billing.')) return
-    const res = await window.api.items.deactivate(id)
-    if (!res.ok) { alert(res.error); return }
-    loadItems()
+    try {
+      const res = await window.api.items.deactivate(id)
+      if (!res.ok) { alert(res.error); return }
+      loadItems()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'IPC error')
+    }
   }
 
   // ── Variant form ───────────────────────────────────────────
@@ -147,13 +156,17 @@ export default function ItemsPage() {
     e.preventDefault()
     setVariantError('')
     if (!expandedItemId) return
-    const res =
-      editingVariantId !== null
-        ? await window.api.variants.update(editingVariantId, variantForm.name, variantForm.isDefault)
-        : await window.api.variants.create(expandedItemId, variantForm.name, variantForm.isDefault)
-    if (!res.ok) { setVariantError(res.error ?? 'Unknown error'); return }
-    cancelVariant()
-    loadVariants(expandedItemId)
+    try {
+      const res =
+        editingVariantId !== null
+          ? await window.api.variants.update(editingVariantId, variantForm.name, variantForm.isDefault)
+          : await window.api.variants.create(expandedItemId, variantForm.name, variantForm.isDefault)
+      if (!res.ok) { setVariantError(res.error ?? 'Unknown error'); return }
+      cancelVariant()
+      loadVariants(expandedItemId)
+    } catch (err) {
+      setVariantError(err instanceof Error ? err.message : 'IPC error')
+    }
   }
 
   async function handleDeactivateVariant(v: VariantRow) {
@@ -161,9 +174,13 @@ export default function ItemsPage() {
       alert('Cannot remove the only active variant.')
       return
     }
-    const res = await window.api.variants.deactivate(v.id)
-    if (!res.ok) { alert(res.error); return }
-    loadVariants(v.item_id)
+    try {
+      const res = await window.api.variants.deactivate(v.id)
+      if (!res.ok) { alert(res.error); return }
+      loadVariants(v.item_id)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'IPC error')
+    }
   }
 
   return (

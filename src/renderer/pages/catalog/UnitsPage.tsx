@@ -54,20 +54,29 @@ export default function UnitsPage() {
       return
     }
     setLoading(true)
-    const res =
-      editingId !== null
-        ? await window.api.units.update(editingId, form.name, form.abbreviation, baseFactor)
-        : await window.api.units.create(form.name, form.abbreviation, baseFactor)
-    setLoading(false)
-    if (!res.ok) { setError(res.error ?? 'Unknown error'); return }
-    cancel()
-    load()
+    try {
+      const res =
+        editingId !== null
+          ? await window.api.units.update(editingId, form.name, form.abbreviation, baseFactor)
+          : await window.api.units.create(form.name, form.abbreviation, baseFactor)
+      if (!res.ok) { setError(res.error ?? 'Unknown error'); return }
+      cancel()
+      load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'IPC error — try restarting the app')
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function handleDelete(id: number) {
-    const res = await window.api.units.delete(id)
-    if (!res.ok) { alert(res.error); return }
-    load()
+    try {
+      const res = await window.api.units.delete(id)
+      if (!res.ok) { alert(res.error); return }
+      load()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'IPC error')
+    }
   }
 
   return (

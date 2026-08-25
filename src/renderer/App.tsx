@@ -4,13 +4,15 @@ import SetupWizard from './pages/SetupWizard'
 import Login from './pages/Login'
 import UnitsPage from './pages/catalog/UnitsPage'
 import ItemsPage from './pages/catalog/ItemsPage'
+import PricesPage from './pages/catalog/PricesPage'
 
 type AppState = 'loading' | 'setup' | 'login' | 'app'
-type NavPage = 'dashboard' | 'units' | 'items'
+type NavPage = 'dashboard' | 'items' | 'prices' | 'units'
 
 const NAV: { id: NavPage; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'items', label: 'Items' },
+  { id: 'prices', label: 'Prices' },
   { id: 'units', label: 'Units' },
 ]
 
@@ -91,6 +93,7 @@ export default function App() {
         )}
         {page === 'units' && <UnitsPage />}
         {page === 'items' && <ItemsPage />}
+        {page === 'prices' && <PricesPage />}
       </main>
     </div>
   )

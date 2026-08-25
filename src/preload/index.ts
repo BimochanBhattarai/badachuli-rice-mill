@@ -48,4 +48,18 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('variants:update', id, name, isDefault),
     deactivate: (id: number) => ipcRenderer.invoke('variants:deactivate', id),
   },
+
+  prices: {
+    getCurrent: (itemId: number) => ipcRenderer.invoke('prices:getCurrent', itemId),
+    getHistory: (itemId: number, variantId: number | null, priceType: 'sell' | 'buy') =>
+      ipcRenderer.invoke('prices:getHistory', itemId, variantId, priceType),
+    set: (
+      itemId: number,
+      variantId: number | null,
+      unitId: number,
+      price: number,
+      priceType: 'sell' | 'buy',
+      effectiveFrom: string
+    ) => ipcRenderer.invoke('prices:set', itemId, variantId, unitId, price, priceType, effectiveFrom),
+  },
 })

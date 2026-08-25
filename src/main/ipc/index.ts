@@ -4,12 +4,14 @@ import { registerSettingsHandlers } from './settings'
 import { registerAuthHandlers } from './auth'
 import { registerUnitHandlers } from './units'
 import { registerItemHandlers } from './items'
+import { registerPriceHandlers } from './prices'
 
 export function registerIpcHandlers(db: Database.Database): void {
   registerSettingsHandlers(db)
   registerAuthHandlers(db)
   registerUnitHandlers(db)
   registerItemHandlers(db)
+  registerPriceHandlers(db)
 
   ipcMain.handle('ping', () => 'pong')
 }
