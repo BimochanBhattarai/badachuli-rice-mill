@@ -235,7 +235,7 @@ export default function StockPage({ currentUser }: Props) {
                 </select>
               </label>
 
-              {variants.length > 1 && (
+              {variants.length > 0 && (
                 <label>
                   Variant
                   <select
@@ -286,7 +286,7 @@ export default function StockPage({ currentUser }: Props) {
                   placeholder={originalPrice ? `Current: ${originalPrice}` : 'No price set'}
                 />
                 {form.price !== '' && form.price !== originalPrice && (
-                  <span className="field-hint">Will update the sell price</span>
+                  <span className="field-hint">Will update the buy price</span>
                 )}
               </label>
 
@@ -343,7 +343,11 @@ export default function StockPage({ currentUser }: Props) {
           {filtered.map((s, i) => (
             <tr key={i}>
               <td>{s.item_name}</td>
-              <td>{s.variant_name ?? <span style={{ color: '#4b5563' }}>—</span>}</td>
+              <td>
+                {s.variant_name && s.variant_name !== s.item_name
+                  ? s.variant_name
+                  : <span style={{ color: '#4b5563' }}>—</span>}
+              </td>
               <td>
                 <span className={`badge badge-${s.item_category}`}>
                   {s.item_category.replace('_', ' ')}

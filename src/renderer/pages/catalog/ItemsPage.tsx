@@ -1,17 +1,12 @@
 import { useEffect, useState } from 'react'
 import type { ItemRow, UnitRow, VariantRow } from '../../../shared/types/api'
 
-const CATEGORIES: { value: ItemRow['category']; label: string }[] = [
-  { value: 'raw_material', label: 'Raw Material' },
-  { value: 'finished', label: 'Finished Good' },
-  { value: 'byproduct', label: 'By-product' },
-  { value: 'consumable', label: 'Consumable' },
-]
-
 interface ItemFormState {
   name: string
-  category: ItemRow['category']
   defaultUnitId: string
+  isBuyable: boolean
+  isSellable: boolean
+  isProcessable: boolean
 }
 
 interface VariantFormState {
@@ -19,14 +14,27 @@ interface VariantFormState {
   isDefault: boolean
 }
 
-const EMPTY_ITEM: ItemFormState = { name: '', category: 'raw_material', defaultUnitId: '' }
+const EMPTY_ITEM: ItemFormState = {
+  name: '',
+  defaultUnitId: '',
+  isBuyable: false,
+  isSellable: false,
+  isProcessable: false,
+}
 const EMPTY_VARIANT: VariantFormState = { name: '', isDefault: false }
+
+function purposeLabel(item: ItemRow): string {
+  const tags: string[] = []
+  if (item.is_buyable) tags.push('Buy')
+  if (item.is_sellable) tags.push('Sell')
+  if (item.is_processable) tags.push('Process')
+  return tags.join(' · ') || '—'
+}
 
 export default function ItemsPage() {
   const [items, setItems] = useState<ItemRow[]>([])
   const [units, setUnits] = useState<UnitRow[]>([])
   const [search, setSearch] = useState('')
-  const [filterCategory, setFilterCategory] = useState<string>('')
 
   const [showItemForm, setShowItemForm] = useState(false)
   const [editingItemId, setEditingItemId] = useState<number | null>(null)
@@ -42,7 +50,7 @@ export default function ItemsPage() {
   const [variantError, setVariantError] = useState('')
 
   async function loadItems() {
-    const res = await window.api.items.search(search, filterCategory || undefined)
+    const res = await window.api.items.search(search)
     if (res.ok && res.data) setItems(res.data)
   }
 
@@ -56,7 +64,7 @@ export default function ItemsPage() {
   }
 
   useEffect(() => { loadUnits() }, [])
-  useEffect(() => { loadItems() }, [search, filterCategory])
+  useEffect(() => { loadItems() }, [search])
 
   async function loadVariants(itemId: number) {
     const res = await window.api.variants.getByItem(itemId)
@@ -74,7 +82,7 @@ export default function ItemsPage() {
     }
   }
 
-  // ── Item form ───────────────────────────────────────────────
+  // ── Item form ─────────────────────────────────────────────
 
   function openCreateItem() {
     setEditingItemId(null)
@@ -88,8 +96,10 @@ export default function ItemsPage() {
     setEditingItemId(item.id)
     setItemForm({
       name: item.name,
-      category: item.category,
       defaultUnitId: String(item.default_unit_id),
+      isBuyable: !!item.is_buyable,
+      isSellable: !!item.is_sellable,
+      isProcessable: !!item.is_processable,
     })
     setItemError('')
     setShowItemForm(true)
@@ -107,17 +117,27 @@ export default function ItemsPage() {
     setItemError('')
     const unitId = parseInt(itemForm.defaultUnitId)
     if (!unitId) { setItemError('Please select a default unit'); return }
+    if (!itemForm.isBuyable && !itemForm.isSellable && !itemForm.isProcessable) {
+      setItemError('Select at least one purpose: Buy, Sell, or Process')
+      return
+    }
     setItemLoading(true)
     try {
       const res =
         editingItemId !== null
-          ? await window.api.items.update(editingItemId, itemForm.name, itemForm.category, unitId)
-          : await window.api.items.create(itemForm.name, itemForm.category, unitId)
+          ? await window.api.items.update(
+              editingItemId, itemForm.name, unitId,
+              itemForm.isBuyable, itemForm.isSellable, itemForm.isProcessable
+            )
+          : await window.api.items.create(
+              itemForm.name, unitId,
+              itemForm.isBuyable, itemForm.isSellable, itemForm.isProcessable
+            )
       if (!res.ok) { setItemError(res.error ?? 'Unknown error'); return }
       cancelItem()
       loadItems()
     } catch (err) {
-      setItemError(err instanceof Error ? err.message : 'IPC error — try restarting the app')
+      setItemError(err instanceof Error ? err.message : 'IPC error — restart the app')
     } finally {
       setItemLoading(false)
     }
@@ -134,7 +154,7 @@ export default function ItemsPage() {
     }
   }
 
-  // ── Variant form ───────────────────────────────────────────
+  // ── Variant form ──────────────────────────────────────────
 
   function openCreateVariant() {
     setEditingVariantId(null)
@@ -203,12 +223,6 @@ export default function ItemsPage() {
           onChange={e => setSearch(e.target.value)}
           className="search-input"
         />
-        <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
-          <option value="">All categories</option>
-          {CATEGORIES.map(c => (
-            <option key={c.value} value={c.value}>{c.label}</option>
-          ))}
-        </select>
       </div>
 
       {showItemForm && (
@@ -223,21 +237,10 @@ export default function ItemsPage() {
                   type="text"
                   value={itemForm.name}
                   onChange={e => setItemForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="e.g. Dhan (Paddy)"
+                  placeholder="e.g. Dhan"
                   required
                   autoFocus
                 />
-              </label>
-              <label>
-                Category
-                <select
-                  value={itemForm.category}
-                  onChange={e => setItemForm(f => ({ ...f, category: e.target.value as ItemRow['category'] }))}
-                >
-                  {CATEGORIES.map(c => (
-                    <option key={c.value} value={c.value}>{c.label}</option>
-                  ))}
-                </select>
               </label>
               <label>
                 Default Unit
@@ -253,6 +256,35 @@ export default function ItemsPage() {
                 </select>
               </label>
             </div>
+
+            <div className="purpose-flags">
+              <span className="purpose-flags-label">Can be:</span>
+              <label className="label-checkbox">
+                <input
+                  type="checkbox"
+                  checked={itemForm.isBuyable}
+                  onChange={e => setItemForm(f => ({ ...f, isBuyable: e.target.checked }))}
+                />
+                Bought (purchased from suppliers)
+              </label>
+              <label className="label-checkbox">
+                <input
+                  type="checkbox"
+                  checked={itemForm.isSellable}
+                  onChange={e => setItemForm(f => ({ ...f, isSellable: e.target.checked }))}
+                />
+                Sold (sold to customers)
+              </label>
+              <label className="label-checkbox">
+                <input
+                  type="checkbox"
+                  checked={itemForm.isProcessable}
+                  onChange={e => setItemForm(f => ({ ...f, isProcessable: e.target.checked }))}
+                />
+                Processed (input or output of mill processing)
+              </label>
+            </div>
+
             <div className="form-actions">
               <button type="submit" className="btn-primary" disabled={itemLoading}>
                 {itemLoading ? 'Saving…' : editingItemId !== null ? 'Update' : 'Create'}
@@ -267,7 +299,7 @@ export default function ItemsPage() {
         <thead>
           <tr>
             <th>Name</th>
-            <th>Category</th>
+            <th>Can be</th>
             <th>Default Unit</th>
             <th></th>
           </tr>
@@ -284,7 +316,9 @@ export default function ItemsPage() {
                     {expandedItemId === item.id ? '▾' : '▸'} {item.name}
                   </button>
                 </td>
-                <td><span className={`badge badge-${item.category}`}>{item.category.replace('_', ' ')}</span></td>
+                <td>
+                  <span className="purpose-tags">{purposeLabel(item)}</span>
+                </td>
                 <td>{item.unit_name} ({item.unit_abbreviation})</td>
                 <td className="row-actions">
                   <button className="btn-ghost btn-sm" onClick={() => openEditItem(item)}>Edit</button>
@@ -312,7 +346,7 @@ export default function ItemsPage() {
                                   type="text"
                                   value={variantForm.name}
                                   onChange={e => setVariantForm(f => ({ ...f, name: e.target.value }))}
-                                  placeholder="e.g. Mansuli"
+                                  placeholder="e.g. Sabitri"
                                   required
                                   autoFocus
                                 />
@@ -341,6 +375,9 @@ export default function ItemsPage() {
                           <tr><th>Name</th><th>Default</th><th></th></tr>
                         </thead>
                         <tbody>
+                          {variants.filter(v => v.is_active).length === 0 && (
+                            <tr><td colSpan={3} className="empty-state">No variants</td></tr>
+                          )}
                           {variants.filter(v => v.is_active).map(v => (
                             <tr key={v.id}>
                               <td>{v.name}</td>

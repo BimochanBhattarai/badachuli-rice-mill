@@ -24,6 +24,9 @@ export interface ItemRow {
   category: 'raw_material' | 'finished' | 'byproduct' | 'consumable'
   default_unit_id: number
   is_active: number
+  is_buyable: number
+  is_sellable: number
+  is_processable: number
   created_at: string
   unit_name: string
   unit_abbreviation: string
@@ -94,17 +97,24 @@ export interface ElectronAPI {
   items: {
     getAll: (activeOnly?: boolean) => Promise<IpcResult<ItemRow[]>>
     getById: (id: number) => Promise<IpcResult<ItemRow>>
-    search: (query: string, category?: string) => Promise<IpcResult<ItemRow[]>>
+    search: (
+      query: string,
+      filter?: { sellable?: boolean; buyable?: boolean; processable?: boolean }
+    ) => Promise<IpcResult<ItemRow[]>>
     create: (
       name: string,
-      category: ItemRow['category'],
-      defaultUnitId: number
+      defaultUnitId: number,
+      isBuyable: boolean,
+      isSellable: boolean,
+      isProcessable: boolean
     ) => Promise<IpcResult<{ id: number; variantId: number }>>
     update: (
       id: number,
       name: string,
-      category: ItemRow['category'],
-      defaultUnitId: number
+      defaultUnitId: number,
+      isBuyable: boolean,
+      isSellable: boolean,
+      isProcessable: boolean
     ) => Promise<IpcResult>
     deactivate: (id: number) => Promise<IpcResult>
   }

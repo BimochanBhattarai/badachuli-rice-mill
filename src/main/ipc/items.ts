@@ -17,7 +17,7 @@ import {
   ensureDefaultVariant,
 } from '../../repository/variant.repo'
 import type { IpcResult } from '../../shared/types/api'
-import type { ItemRow, ItemWithUnit } from '../../repository/item.repo'
+import type { ItemWithUnit } from '../../repository/item.repo'
 import type { VariantRow } from '../../repository/variant.repo'
 
 export function registerItemHandlers(db: Database.Database): void {
@@ -44,9 +44,13 @@ export function registerItemHandlers(db: Database.Database): void {
 
   ipcMain.handle(
     'items:search',
-    (_e, query: string, category?: string): IpcResult<ItemWithUnit[]> => {
+    (
+      _e,
+      query: string,
+      filter?: { sellable?: boolean; buyable?: boolean; processable?: boolean }
+    ): IpcResult<ItemWithUnit[]> => {
       try {
-        return { ok: true, data: searchItems(db, query ?? '', category) }
+        return { ok: true, data: searchItems(db, query ?? '', filter) }
       } catch (e) {
         return { ok: false, error: String(e) }
       }
@@ -58,18 +62,18 @@ export function registerItemHandlers(db: Database.Database): void {
     (
       _e,
       name: string,
-      category: ItemRow['category'],
-      defaultUnitId: number
+      defaultUnitId: number,
+      isBuyable: boolean,
+      isSellable: boolean,
+      isProcessable: boolean
     ): IpcResult<{ id: number; variantId: number }> => {
       try {
         if (!name?.trim()) return { ok: false, error: 'Item name is required' }
-        const validCategories = ['raw_material', 'finished', 'byproduct', 'consumable']
-        if (!validCategories.includes(category))
-          return { ok: false, error: 'Invalid category' }
+        if (!isBuyable && !isSellable && !isProcessable)
+          return { ok: false, error: 'Select at least one purpose (Buy, Sell, or Process)' }
 
         const itemId = db.transaction(() => {
-          const id = createItem(db, name.trim(), category, defaultUnitId)
-          // auto-create a default variant with the same name
+          const id = createItem(db, name.trim(), defaultUnitId, isBuyable, isSellable, isProcessable)
           createVariant(db, id, name.trim(), true)
           return id
         })()
@@ -86,10 +90,20 @@ export function registerItemHandlers(db: Database.Database): void {
 
   ipcMain.handle(
     'items:update',
-    (_e, id: number, name: string, category: ItemRow['category'], defaultUnitId: number): IpcResult => {
+    (
+      _e,
+      id: number,
+      name: string,
+      defaultUnitId: number,
+      isBuyable: boolean,
+      isSellable: boolean,
+      isProcessable: boolean
+    ): IpcResult => {
       try {
         if (!name?.trim()) return { ok: false, error: 'Item name is required' }
-        updateItem(db, id, name.trim(), category, defaultUnitId)
+        if (!isBuyable && !isSellable && !isProcessable)
+          return { ok: false, error: 'Select at least one purpose' }
+        updateItem(db, id, name.trim(), defaultUnitId, isBuyable, isSellable, isProcessable)
         return { ok: true }
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e)

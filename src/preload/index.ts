@@ -32,12 +32,12 @@ contextBridge.exposeInMainWorld('api', {
   items: {
     getAll: (activeOnly?: boolean) => ipcRenderer.invoke('items:getAll', activeOnly),
     getById: (id: number) => ipcRenderer.invoke('items:getById', id),
-    search: (query: string, category?: string) =>
-      ipcRenderer.invoke('items:search', query, category),
-    create: (name: string, category: string, defaultUnitId: number) =>
-      ipcRenderer.invoke('items:create', name, category, defaultUnitId),
-    update: (id: number, name: string, category: string, defaultUnitId: number) =>
-      ipcRenderer.invoke('items:update', id, name, category, defaultUnitId),
+    search: (query: string, filter?: { sellable?: boolean; buyable?: boolean; processable?: boolean }) =>
+      ipcRenderer.invoke('items:search', query, filter),
+    create: (name: string, defaultUnitId: number, isBuyable: boolean, isSellable: boolean, isProcessable: boolean) =>
+      ipcRenderer.invoke('items:create', name, defaultUnitId, isBuyable, isSellable, isProcessable),
+    update: (id: number, name: string, defaultUnitId: number, isBuyable: boolean, isSellable: boolean, isProcessable: boolean) =>
+      ipcRenderer.invoke('items:update', id, name, defaultUnitId, isBuyable, isSellable, isProcessable),
     deactivate: (id: number) => ipcRenderer.invoke('items:deactivate', id),
   },
 
