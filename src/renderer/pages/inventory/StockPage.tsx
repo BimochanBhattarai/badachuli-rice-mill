@@ -65,7 +65,7 @@ export default function StockPage({ currentUser }: Props) {
     if (!res.ok || !res.data) return ''
     const match = res.data.find(
       (p: CurrentPrice) =>
-        p.price_type === 'sell' &&
+        p.price_type === 'buy' &&
         p.unit_id === unitId &&
         (variantId ? p.variant_id === variantId : p.variant_id === null)
     )
@@ -185,7 +185,7 @@ export default function StockPage({ currentUser }: Props) {
           variantId,
           unitId,
           price,
-          'sell',
+          'buy',
           today()
         )
         if (!priceRes.ok) { setError(`Stock saved but price failed: ${priceRes.error}`); return }
@@ -276,7 +276,7 @@ export default function StockPage({ currentUser }: Props) {
               </label>
 
               <label>
-                Sell Price (Rs.)
+                Buy Price (Rs.)
                 <input
                   type="number"
                   step="0.01"
