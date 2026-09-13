@@ -4,6 +4,7 @@ import {
   getAllStockLevels,
   getItemStockLevels,
   addInventoryTransaction,
+  adjustStock,
 } from '../../repository/inventory.repo'
 import type { IpcResult } from '../../shared/types/api'
 import type { StockLevel } from '../../repository/inventory.repo'
@@ -26,6 +27,30 @@ export function registerInventoryHandlers(db: Database.Database): void {
       return { ok: false, error: String(e) }
     }
   })
+
+  ipcMain.handle(
+    'inventory:adjust',
+    (
+      _e,
+      itemId: number,
+      variantId: number | null,
+      unitId: number,
+      newQty: number,
+      operatorId: number,
+      notes?: string
+    ): IpcResult => {
+      try {
+        if (!itemId) return { ok: false, error: 'Item is required' }
+        if (!unitId) return { ok: false, error: 'Unit is required' }
+        if (newQty < 0) return { ok: false, error: 'Quantity cannot be negative' }
+        if (!operatorId) return { ok: false, error: 'Operator is required' }
+        adjustStock(db, itemId, variantId, unitId, newQty, operatorId, notes)
+        return { ok: true }
+      } catch (e) {
+        return { ok: false, error: String(e) }
+      }
+    }
+  )
 
   ipcMain.handle(
     'inventory:addOpening',

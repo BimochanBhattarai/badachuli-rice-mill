@@ -1,455 +1,747 @@
 import { useEffect, useRef, useState } from 'react'
+import { ShoppingCart, Cpu, ChevronLeft, Plus, X, CheckCircle } from 'lucide-react'
 import type {
-  AuthUser, CustomerWithBalance, ItemRow, VariantRow, UnitRow,
-  BillLineInput, CreateBillInput, BillWithCustomer, BillLineWithDetail,
+  AuthUser, ItemRow, VariantRow, CustomerWithBalance,
+  BillWithCustomer, BillLineWithDetail, BusinessRow,
 } from '../../../shared/types/api'
+import type { AmendData } from './BillsPage'
 import PrintReceipt from '../../components/PrintReceipt'
+import { useLanguage } from '../../i18n'
 
-interface Props { currentUser: AuthUser }
-
-interface DraftLine extends BillLineInput {
-  itemName: string
-  variantName: string | null
-  unitAbbr: string
+interface Props {
+  currentUser: AuthUser
+  amendData?: AmendData | null
+  onAmendComplete?: () => void
 }
 
-const PAYMENT_METHODS = [
-  { value: 'cash',   label: 'Cash' },
-  { value: 'credit', label: 'Udharo (Credit)' },
-  { value: 'bank',   label: 'Bank Transfer' },
-  { value: 'digital',label: 'Digital Wallet' },
-]
+type BillMode = 'chooser' | 'sale' | 'processing'
+type PayMode = 'credit' | 'paid'
 
-export default function NewBillPage({ currentUser }: Props) {
-  const [billNumber, setBillNumber] = useState('')
+interface DraftLine {
+  key: string
+  itemId: number
+  variantId: number | null
+  itemName: string
+  variantName: string | null
+  unitId: number
+  unitAbbr: string
+  rate: number
+  qty: number
+  lineTotal: number
+}
+
+const PAID_METHODS = [
+  { id: 'cash',    labelKey: 'bill.cash_method' },
+  { id: 'bank',    labelKey: 'bill.bank_method' },
+  { id: 'digital', labelKey: 'bill.digital_method' },
+] as const
+
+export default function NewBillPage({ currentUser, amendData, onAmendComplete }: Props) {
+  const { t, fmtAmt } = useLanguage()
+
+  const [mode, setMode] = useState<BillMode>('chooser')
+  const [payMode, setPayMode] = useState<PayMode>('paid')
   const [customer, setCustomer] = useState<CustomerWithBalance | null>(null)
-  const [customerSearch, setCustomerSearch] = useState('')
-  const [customerResults, setCustomerResults] = useState<CustomerWithBalance[]>([])
+  const [customerQuery, setCustomerQuery] = useState('')
+  const [customerSuggestions, setCustomerSuggestions] = useState<CustomerWithBalance[]>([])
   const [showCustomerDrop, setShowCustomerDrop] = useState(false)
-
   const [lines, setLines] = useState<DraftLine[]>([])
-  const [discountAmount, setDiscountAmount] = useState('0')
-  const [paidAmount, setPaidAmount] = useState('0')
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank' | 'digital' | 'credit'>('cash')
-  const [notes, setNotes] = useState('')
-
-  // Item search state
-  const [itemSearch, setItemSearch] = useState('')
-  const [itemResults, setItemResults] = useState<ItemRow[]>([])
-  const [showItemDrop, setShowItemDrop] = useState(false)
-  const [pendingItem, setPendingItem] = useState<ItemRow | null>(null)
-  const [pendingVariants, setPendingVariants] = useState<VariantRow[]>([])
-  const [pendingUnits, setPendingUnits] = useState<UnitRow[]>([])
-  const [pendingVariantId, setPendingVariantId] = useState('')
-  const [pendingUnitId, setPendingUnitId] = useState('')
-  const [pendingQty, setPendingQty] = useState('')
-  const [pendingRate, setPendingRate] = useState('')
-  const [pendingDiscount, setPendingDiscount] = useState('0')
-
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank' | 'digital'>('cash')
+  const [partialPayAmount, setPartialPayAmount] = useState('')
+  const [billNumber, setBillNumber] = useState('')
+  const [showConfirm, setShowConfirm] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  const [successMsg, setSuccessMsg] = useState('')
+  const [saveError, setSaveError] = useState('')
+
+  const [businesses, setBusinesses] = useState<BusinessRow[]>([])
+  const [selectedBusiness, setSelectedBusiness] = useState<BusinessRow | null>(null)
+
+  const [itemQuery, setItemQuery] = useState('')
+  const [itemSuggestions, setItemSuggestions] = useState<ItemRow[]>([])
+  const [showItemDrop, setShowItemDrop] = useState(false)
+  const [selectedItem, setSelectedItem] = useState<ItemRow | null>(null)
+  const [variants, setVariants] = useState<VariantRow[]>([])
+  const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null)
+  const [currentRate, setCurrentRate] = useState<number>(0)
+  const [entryQty, setEntryQty] = useState('')
 
   const [printBill, setPrintBill] = useState<BillWithCustomer | null>(null)
   const [printLines, setPrintLines] = useState<BillLineWithDetail[]>([])
 
-  const itemSearchRef = useRef<HTMLInputElement>(null)
+  const itemInputRef = useRef<HTMLInputElement>(null)
+
+  const grandTotal = lines.reduce((s, l) => s + l.lineTotal, 0)
+  const partialNow = payMode === 'credit' ? Math.min(parseFloat(partialPayAmount) || 0, grandTotal) : 0
+  const effectivePaid = payMode === 'paid' ? grandTotal : partialNow
+  const dueAmount = grandTotal - effectivePaid
+
+  function tpl(key: string, vals: Record<string, string>) {
+    return t(key).replace(/\{(\w+)\}/g, (_, k) => vals[k] ?? '')
+  }
 
   useEffect(() => {
-    window.api.bills.getNextNumber().then(r => {
-      if (r.ok && r.data) setBillNumber(r.data.billNumber)
+    window.api.businesses.getAll().then(r => {
+      if (r.ok && r.data) setBusinesses(r.data)
     })
   }, [])
 
-  // Customer search
   useEffect(() => {
-    if (!customerSearch.trim()) { setCustomerResults([]); return }
-    window.api.customers.search(customerSearch).then(r => {
-      if (r.ok && r.data) setCustomerResults(r.data)
-    })
-  }, [customerSearch])
+    if (!amendData) return
+    setMode('sale')
+    setPayMode(amendData.customer ? 'credit' : 'paid')
+    setCustomer(amendData.customer)
+    setCustomerQuery(amendData.customer?.name ?? '')
+    setLines(amendData.lines.map((l, i) => ({
+      key: `amend-${i}`,
+      itemId: l.item_id,
+      variantId: l.variant_id,
+      itemName: l.item_name,
+      variantName: l.variant_name !== l.item_name ? l.variant_name : null,
+      unitId: l.unit_id,
+      unitAbbr: l.unit_abbreviation,
+      rate: l.rate_snapshot,
+      qty: l.qty,
+      lineTotal: l.line_total,
+    })))
+    onAmendComplete?.()
+  }, [amendData])
 
-  // Item search
-  useEffect(() => {
-    if (!itemSearch.trim()) { setItemResults([]); setShowItemDrop(false); return }
-    window.api.items.search(itemSearch, { sellable: true }).then(r => {
-      if (r.ok && r.data) { setItemResults(r.data); setShowItemDrop(true) }
-    })
-  }, [itemSearch])
-
-  async function selectCustomer(c: CustomerWithBalance) {
-    setCustomer(c)
-    setCustomerSearch(c.name)
-    setShowCustomerDrop(false)
-    setCustomerResults([])
+  function resetAll() {
+    setMode('chooser')
+    setPayMode('paid')
+    setCustomer(null); setCustomerQuery(''); setCustomerSuggestions([])
+    setLines([])
+    setPaymentMethod('cash'); setPartialPayAmount('')
+    setItemQuery(''); setItemSuggestions([]); setShowItemDrop(false)
+    setSelectedItem(null); setVariants([])
+    setSelectedVariantId(null); setCurrentRate(0); setEntryQty('')
+    setShowConfirm(false); setSaveError('')
+    setSelectedBusiness(null); setBillNumber('')
   }
 
-  function clearCustomer() {
-    setCustomer(null)
-    setCustomerSearch('')
-    setCustomerResults([])
+  async function selectBusiness(biz: BusinessRow) {
+    setSelectedBusiness(biz)
+    const r = await window.api.bills.getNextNumber(biz.id)
+    if (r.ok && r.data) setBillNumber(r.data.billNumber)
+  }
+
+  async function searchCustomers(q: string) {
+    setCustomerQuery(q)
+    if (!q.trim()) { setCustomerSuggestions([]); setShowCustomerDrop(false); return }
+    const res = await window.api.customers.search(q)
+    if (res.ok && res.data) { setCustomerSuggestions(res.data); setShowCustomerDrop(true) }
+  }
+
+  function selectCustomer(c: CustomerWithBalance) {
+    setCustomer(c); setCustomerQuery(c.name); setShowCustomerDrop(false)
+  }
+
+  async function searchItems(q: string) {
+    setItemQuery(q)
+    setSelectedItem(null); setVariants([]); setSelectedVariantId(null); setCurrentRate(0)
+    if (!q.trim()) { setItemSuggestions([]); setShowItemDrop(false); return }
+    const filter = mode === 'processing' ? { processable: true } : { sellable: true }
+    const res = await window.api.items.search(q, filter)
+    if (res.ok && res.data) { setItemSuggestions(res.data); setShowItemDrop(true) }
   }
 
   async function selectItem(item: ItemRow) {
-    setPendingItem(item)
-    setItemSearch(item.name)
+    setSelectedItem(item)
+    setItemQuery(item.name)
     setShowItemDrop(false)
+    setVariants([]); setSelectedVariantId(null); setCurrentRate(0); setEntryQty('')
 
-    const [vRes, uRes, priceRes] = await Promise.all([
-      window.api.variants.getByItem(item.id),
-      window.api.units.getAll(),
-      window.api.prices.getCurrent(item.id),
-    ])
-
+    const vRes = await window.api.variants.getByItem(item.id)
     const activeVariants = (vRes.data ?? []).filter(v => v.is_active)
-    const units = uRes.data ?? []
-    const defVariant = activeVariants.find(v => v.is_default) ?? activeVariants[0]
-    const defUnit = units.find(u => u.id === item.default_unit_id) ?? units.find(u => u.is_default) ?? units[0]
+    setVariants(activeVariants)
 
-    setPendingVariants(activeVariants)
-    setPendingUnits(units)
-    setPendingVariantId(defVariant ? String(defVariant.id) : '')
-    setPendingUnitId(defUnit ? String(defUnit.id) : '')
-    setPendingQty('')
-    setPendingDiscount('0')
+    const defaultV = activeVariants.find(v => v.is_default) ?? activeVariants[0] ?? null
+    const varId = defaultV?.id ?? null
+    setSelectedVariantId(varId)
 
-    // Auto-fill sell price
-    const variantId = defVariant?.id ?? null
-    const unitId = defUnit?.id
-    const price = (priceRes.data ?? []).find(
-      p => p.price_type === 'sell' &&
-           p.unit_id === unitId &&
-           (variantId ? p.variant_id === variantId : p.variant_id === null)
-    )
-    setPendingRate(price ? String(price.price) : '')
+    await loadRate(item.id, varId, item.default_unit_id)
   }
 
-  async function onPendingVariantChange(variantId: string) {
-    setPendingVariantId(variantId)
-    if (!pendingItem) return
-    const priceRes = await window.api.prices.getCurrent(pendingItem.id)
-    const vid = variantId ? parseInt(variantId) : null
-    const uid = parseInt(pendingUnitId)
-    const price = (priceRes.data ?? []).find(
-      p => p.price_type === 'sell' && p.unit_id === uid &&
-           (vid ? p.variant_id === vid : p.variant_id === null)
-    )
-    setPendingRate(price ? String(price.price) : '')
+  async function loadRate(itemId: number, variantId: number | null, unitId: number) {
+    const pRes = await window.api.prices.getCurrent(itemId)
+    if (!pRes.ok || !pRes.data) { setCurrentRate(0); return }
+    const prices = pRes.data
+    const type = mode === 'processing' ? 'processing' : 'sell'
+    // 1. exact variant + unit match
+    const match =
+      prices.find(p => p.price_type === type && p.variant_id === variantId && p.unit_id === unitId)
+      // 2. null-variant (global) price for the same unit
+      ?? prices.find(p => p.price_type === type && p.variant_id === null && p.unit_id === unitId)
+      // 3. any price for this variant (any unit)
+      ?? prices.find(p => p.price_type === type && p.variant_id === variantId)
+      // 4. any price for this type at all
+      ?? prices.find(p => p.price_type === type)
+    setCurrentRate(match?.price ?? 0)
+  }
+
+  function handleVariantChange(varId: number) {
+    setSelectedVariantId(varId)
+    if (selectedItem) loadRate(selectedItem.id, varId, selectedItem.default_unit_id)
   }
 
   function addLine() {
-    if (!pendingItem) return
-    const qty = parseFloat(pendingQty)
-    const rate = parseFloat(pendingRate)
-    const discount = parseFloat(pendingDiscount) || 0
-    if (isNaN(qty) || qty <= 0) return
-    if (isNaN(rate) || rate < 0) return
-
-    const lineTotal = qty * rate - discount
-    const variant = pendingVariants.find(v => v.id === parseInt(pendingVariantId))
-    const unit = pendingUnits.find(u => u.id === parseInt(pendingUnitId))
-
-    const line: DraftLine = {
-      itemId: pendingItem.id,
-      variantId: pendingVariantId ? parseInt(pendingVariantId) : null,
+    if (!selectedItem || !entryQty || parseFloat(entryQty) <= 0) return
+    const qty = parseFloat(entryQty)
+    const lineTotal = parseFloat((qty * currentRate).toFixed(2))
+    const variantName = variants.find(v => v.id === selectedVariantId)?.name ?? null
+    setLines(prev => [...prev, {
+      key: `${Date.now()}`,
+      itemId: selectedItem.id,
+      variantId: selectedVariantId,
+      itemName: selectedItem.name,
+      variantName: variantName !== selectedItem.name ? variantName : null,
+      unitId: selectedItem.default_unit_id,
+      unitAbbr: selectedItem.unit_abbreviation,
+      rate: currentRate,
       qty,
-      unitId: parseInt(pendingUnitId),
-      rateSnapshot: rate,
-      lineDiscount: discount,
       lineTotal,
-      sortOrder: lines.length,
-      itemName: pendingItem.name,
-      variantName: variant?.name ?? null,
-      unitAbbr: unit?.abbreviation ?? '',
-    }
-    setLines(prev => [...prev, line])
-
-    // Reset item entry
-    setPendingItem(null)
-    setItemSearch('')
-    setPendingVariants([])
-    setPendingQty('')
-    setPendingRate('')
-    setPendingDiscount('0')
-    itemSearchRef.current?.focus()
+    }])
+    setItemQuery(''); setSelectedItem(null); setVariants([])
+    setSelectedVariantId(null); setCurrentRate(0); setEntryQty('')
   }
 
-  function removeLine(idx: number) {
-    setLines(prev => prev.filter((_, i) => i !== idx))
+  function removeLine(key: string) {
+    setLines(prev => prev.filter(l => l.key !== key))
   }
 
-  // Totals
-  const subtotal = lines.reduce((s, l) => s + l.lineTotal, 0)
-  const discount = parseFloat(discountAmount) || 0
-  const grandTotal = Math.max(0, subtotal - discount)
-  const paid = parseFloat(paidAmount) || 0
-  const due = Math.max(0, grandTotal - paid)
-
-  async function saveBill() {
-    setError('')
-    if (!lines.length) { setError('Add at least one item'); return }
-    setSaving(true)
+  async function handleConfirmSave() {
+    if (saving) return
+    setSaving(true); setSaveError('')
     try {
-      const input: CreateBillInput = {
-        billType: 'sale',
+      const paid = effectivePaid
+      const method: 'cash' | 'bank' | 'digital' | 'credit' =
+        payMode === 'paid' ? paymentMethod
+        : partialNow > 0 ? paymentMethod
+        : 'credit'
+
+      const createRes = await window.api.bills.create({
+        businessId: selectedBusiness!.id,
+        billType: mode as 'sale' | 'processing',
         customerId: customer?.id ?? null,
-        lines: lines.map(({ itemName: _a, variantName: _b, unitAbbr: _c, ...l }) => l),
-        discountAmount: discount,
+        lines: lines.map((l, idx) => ({
+          itemId: l.itemId,
+          variantId: l.variantId,
+          qty: l.qty,
+          unitId: l.unitId,
+          rateSnapshot: l.rate,
+          lineDiscount: 0,
+          lineTotal: l.lineTotal,
+          sortOrder: idx,
+        })),
+        discountAmount: 0,
         paidAmount: paid,
-        paymentMethod,
-        notes: notes || undefined,
+        paymentMethod: method,
         operatorId: currentUser.id,
+      })
+
+      if (!createRes.ok || !createRes.data) {
+        setSaveError(createRes.error ?? 'Save failed'); setSaving(false); return
       }
-      const res = await window.api.bills.create(input)
-      if (!res.ok) { setError(res.error ?? 'Unknown error'); return }
 
-      const { billId, billNumber } = res.data!
-      setSuccessMsg(`Bill ${billNumber} saved`)
-
-      // Load the saved bill for printing
+      const { billId } = createRes.data
       const [billRes, linesRes] = await Promise.all([
         window.api.bills.getById(billId),
         window.api.bills.getLines(billId),
       ])
-      if (billRes.ok && billRes.data) {
+      if (billRes.ok && billRes.data && linesRes.ok && linesRes.data) {
         setPrintBill(billRes.data)
-        setPrintLines(linesRes.data ?? [])
+        setPrintLines(linesRes.data)
       }
 
-      setLines([])
-      setCustomer(null)
-      setCustomerSearch('')
-      setDiscountAmount('0')
-      setPaidAmount('0')
-      setNotes('')
-      const next = await window.api.bills.getNextNumber()
-      if (next.ok && next.data) setBillNumber(next.data.billNumber)
+      setShowConfirm(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'IPC error — restart the app')
+      setSaveError(err instanceof Error ? err.message : 'Unexpected error')
     } finally {
       setSaving(false)
     }
   }
 
-  return (
-    <div className="bill-layout">
-      {printBill && (
-        <PrintReceipt
-          bill={printBill}
-          lines={printLines}
-          onClose={() => setPrintBill(null)}
-        />
-      )}
-      {/* ── Left: item entry ── */}
-      <div className="bill-entry">
-        <div className="bill-entry-header">
-          <span className="bill-number-badge">{billNumber || '…'}</span>
+  function canReview(): boolean {
+    if (lines.length === 0) return false
+    if (payMode === 'credit' && !customer) return false
+    return true
+  }
 
-          {/* Customer picker */}
-          <div className="customer-picker">
-            {customer ? (
-              <div className="customer-selected">
-                <span>{customer.name}</span>
-                {customer.phone && <span className="text-muted">{customer.phone}</span>}
+  function handlePrintClose() {
+    setPrintBill(null); setPrintLines([])
+    resetAll()
+  }
+
+  // ─── Print overlay ─────────────────────────────────────────────────────────
+  if (printBill) {
+    return <PrintReceipt bill={printBill} lines={printLines} business={selectedBusiness!} onClose={handlePrintClose} />
+  }
+
+  // ─── STEP 1 — Chooser ──────────────────────────────────────────────────────
+  if (mode === 'chooser') {
+    return (
+      <div className="bill-chooser">
+        <h2 className="bill-chooser-title">{t('bill.new_transaction')}</h2>
+        <p className="bill-chooser-sub">{t('bill.what_to_do')}</p>
+        <div className="bill-chooser-tiles">
+          <button className="bill-chooser-tile" onClick={() => setMode('sale')}>
+            <div className="bill-chooser-tile-icon" style={{ background: '#f97316' }}>
+              <ShoppingCart size={28} color="#fff" />
+            </div>
+            <div className="bill-chooser-tile-label">{t('bill.type_sale')}</div>
+            <div className="bill-chooser-tile-sub">{t('bill.sale_sub')}</div>
+          </button>
+          <button className="bill-chooser-tile" onClick={() => setMode('processing')}>
+            <div className="bill-chooser-tile-icon" style={{ background: '#a16207' }}>
+              <Cpu size={28} color="#fff" />
+            </div>
+            <div className="bill-chooser-tile-label">{t('bill.type_processing')}</div>
+            <div className="bill-chooser-tile-sub">{t('bill.processing_sub')}</div>
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ─── STEP 2 — Entry Form ───────────────────────────────────────────────────
+  return (
+    <div className="bill-entry-page">
+      {/* Header */}
+      <div className="bill-entry-topbar">
+        <button className="bill-back-btn" onClick={resetAll}>
+          <ChevronLeft size={16} /> {t('common.back')}
+        </button>
+        <span className="bill-number-badge">{billNumber || '—'}</span>
+        <span className="bill-mode-chip">
+          {mode === 'sale' ? `🛒 ${t('bill.type_sale')}` : `⚙️ ${t('bill.type_processing')}`}
+        </span>
+      </div>
+
+      <div className="bill-entry-body">
+        {/* LEFT: Form */}
+        <div className="bill-entry-left">
+
+          {/* Payment Toggle */}
+          <section className="bill-section">
+            <div className="bill-section-title">{t('bill.pay_mode_section')}</div>
+            <div className="pay-toggle">
+              <button
+                className={`pay-toggle-btn${payMode === 'credit' ? ' pay-toggle-active' : ''}`}
+                onClick={() => setPayMode('credit')}
+              >
+                {t('bill.credit_btn')}
+              </button>
+              <button
+                className={`pay-toggle-btn${payMode === 'paid' ? ' pay-toggle-active' : ''}`}
+                onClick={() => setPayMode('paid')}
+              >
+                {t('bill.pay_now_btn')}
+              </button>
+            </div>
+          </section>
+
+          {/* Customer */}
+          <section className="bill-section">
+            <div className="bill-section-title">
+              {mode === 'processing' ? t('bill.customer_processing_label') : t('bill.customer')}
+              {mode === 'sale' && payMode === 'credit' && (
+                <span className="bill-required"> {t('bill.credit_required')}</span>
+              )}
+            </div>
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                className="bill-input"
+                placeholder={t('bill.search_customer')}
+                value={customerQuery}
+                onChange={e => searchCustomers(e.target.value)}
+                onFocus={async () => {
+                  if (customerSuggestions.length) { setShowCustomerDrop(true); return }
+                  const res = await window.api.customers.search('')
+                  if (res.ok && res.data?.length) {
+                    setCustomerSuggestions(res.data)
+                    setShowCustomerDrop(true)
+                  }
+                }}
+                onBlur={() => setTimeout(() => setShowCustomerDrop(false), 150)}
+              />
+              {showCustomerDrop && customerSuggestions.length > 0 && (
+                <ul className="dropdown-list">
+                  {customerSuggestions.map(c => (
+                    <li key={c.id} onMouseDown={() => selectCustomer(c)}>
+                      <span>{c.name}</span>
+                      <span className="text-muted">{c.phone ?? ''}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            {customer && (
+              <div className="customer-card">
+                <div className="customer-card-name">{customer.name}</div>
+                {customer.phone && <div className="customer-card-meta">{customer.phone}</div>}
                 {customer.outstanding > 0 && (
-                  <span className="outstanding-warn">
-                    Udharo: Rs. {customer.outstanding.toLocaleString()}
-                  </span>
+                  <div className="customer-card-outstanding">
+                    {t('bill.outstanding_note')}: {fmtAmt(customer.outstanding)}
+                  </div>
                 )}
-                <button className="btn-ghost btn-sm" onClick={clearCustomer}>✕</button>
+                <button
+                  className="customer-card-clear"
+                  onClick={() => { setCustomer(null); setCustomerQuery('') }}
+                >
+                  <X size={12} />
+                </button>
               </div>
-            ) : (
-              <div className="customer-search-wrap">
+            )}
+          </section>
+
+          {/* Items */}
+          <section className="bill-section">
+            <div className="bill-section-title">
+              {mode === 'processing' ? t('bill.processing_items_label') : t('bill.items_label')}
+            </div>
+
+            <div className="bill-item-entry">
+              <div style={{ position: 'relative', flex: 2 }}>
                 <input
+                  ref={itemInputRef}
                   type="text"
-                  placeholder="Search customer (optional)"
-                  value={customerSearch}
-                  onChange={e => { setCustomerSearch(e.target.value); setShowCustomerDrop(true) }}
-                  onFocus={() => setShowCustomerDrop(true)}
-                  onBlur={() => setTimeout(() => setShowCustomerDrop(false), 150)}
-                  className="search-input"
+                  className="bill-input"
+                  placeholder={t('bill.search_item')}
+                  value={itemQuery}
+                  onChange={e => searchItems(e.target.value)}
+                  onFocus={async () => {
+                    if (itemSuggestions.length) { setShowItemDrop(true); return }
+                    const filter = mode === 'processing' ? { processable: true } : { sellable: true }
+                    const res = await window.api.items.search('', filter)
+                    if (res.ok && res.data?.length) {
+                      setItemSuggestions(res.data)
+                      setShowItemDrop(true)
+                    }
+                  }}
+                  onBlur={() => setTimeout(() => setShowItemDrop(false), 150)}
                 />
-                {showCustomerDrop && customerResults.length > 0 && (
+                {showItemDrop && itemSuggestions.length > 0 && (
                   <ul className="dropdown-list">
-                    {customerResults.map(c => (
-                      <li key={c.id} onMouseDown={() => selectCustomer(c)}>
-                        <span>{c.name}</span>
-                        {c.phone && <span className="text-muted">{c.phone}</span>}
+                    {itemSuggestions.map(item => (
+                      <li key={item.id} onMouseDown={() => selectItem(item)}>
+                        <span>{item.name}</span>
+                        <span className="text-muted">{item.unit_abbreviation}</span>
                       </li>
                     ))}
                   </ul>
                 )}
               </div>
-            )}
-          </div>
-        </div>
 
-        {/* Item search */}
-        <div className="item-entry-row">
-          <div className="item-search-wrap" style={{ flex: 2 }}>
-            <input
-              ref={itemSearchRef}
-              type="text"
-              placeholder="Search item to add…"
-              value={itemSearch}
-              onChange={e => setItemSearch(e.target.value)}
-              onFocus={() => itemResults.length > 0 && setShowItemDrop(true)}
-              onBlur={() => setTimeout(() => setShowItemDrop(false), 150)}
-              className="search-input"
-              autoFocus
-            />
-            {showItemDrop && itemResults.length > 0 && (
-              <ul className="dropdown-list">
-                {itemResults.map(i => (
-                  <li key={i.id} onMouseDown={() => selectItem(i)}>
-                    <span>{i.name}</span>
-                    <span className="text-muted">{i.unit_abbreviation}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {pendingItem && (
-            <>
-              {pendingVariants.length > 1 && (
+              {selectedItem && variants.length > 1 && (
                 <select
-                  value={pendingVariantId}
-                  onChange={e => onPendingVariantChange(e.target.value)}
-                  style={{ flex: 1 }}
+                  className="bill-input bill-input-sm"
+                  value={selectedVariantId ?? ''}
+                  onChange={e => handleVariantChange(parseInt(e.target.value))}
                 >
-                  {pendingVariants.map(v => (
+                  {variants.map(v => (
                     <option key={v.id} value={v.id}>{v.name}</option>
                   ))}
                 </select>
               )}
-              <input
-                type="number" step="any" min="0.001"
-                placeholder="Qty"
-                value={pendingQty}
-                onChange={e => setPendingQty(e.target.value)}
-                style={{ flex: '0 0 90px' }}
-                autoFocus
-              />
-              <select
-                value={pendingUnitId}
-                onChange={e => setPendingUnitId(e.target.value)}
-                style={{ flex: '0 0 90px' }}
-              >
-                {pendingUnits.map(u => (
-                  <option key={u.id} value={u.id}>{u.abbreviation}</option>
-                ))}
-              </select>
-              <input
-                type="number" step="0.01" min="0"
-                placeholder="Rate"
-                value={pendingRate}
-                onChange={e => setPendingRate(e.target.value)}
-                style={{ flex: '0 0 100px' }}
-              />
-              <input
-                type="number" step="0.01" min="0"
-                placeholder="Discount"
-                value={pendingDiscount}
-                onChange={e => setPendingDiscount(e.target.value)}
-                style={{ flex: '0 0 90px' }}
-              />
-              <button className="btn-primary btn-sm" onClick={addLine}>Add</button>
-            </>
+
+              {selectedItem && (
+                <>
+                  <div className="bill-rate-display">
+                    <span className="bill-rate-label">{t('bill.rate')}</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="bill-input bill-input-sm"
+                      value={currentRate}
+                      onChange={e => setCurrentRate(parseFloat(e.target.value) || 0)}
+                      style={{ width: '80px' }}
+                    />
+                  </div>
+                  <input
+                    type="number" step="any" min="0"
+                    className="bill-input bill-input-sm"
+                    placeholder={`${t('bill.qty')} (${selectedItem.unit_abbreviation})`}
+                    value={entryQty}
+                    onChange={e => setEntryQty(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') addLine() }}
+                    autoFocus
+                  />
+                  <div className="bill-line-total-preview">
+                    {fmtAmt((parseFloat(entryQty) || 0) * currentRate)}
+                  </div>
+                  <button className="btn-primary btn-sm" onClick={addLine}>
+                    <Plus size={14} />
+                  </button>
+                </>
+              )}
+            </div>
+
+            {lines.length > 0 ? (
+              <table className="data-table" style={{ marginTop: '0.75rem' }}>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>{t('bill.item')}</th>
+                    <th style={{ textAlign: 'right' }}>{t('bill.qty')}</th>
+                    <th style={{ textAlign: 'right' }}>{t('bill.rate')}</th>
+                    <th style={{ textAlign: 'right' }}>{t('bill.total')}</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((l, idx) => (
+                    <tr key={l.key}>
+                      <td className="text-muted">{idx + 1}</td>
+                      <td>
+                        {l.itemName}
+                        {l.variantName && <span className="text-muted"> · {l.variantName}</span>}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>{l.qty} {l.unitAbbr}</td>
+                      <td style={{ textAlign: 'right' }}>{fmtAmt(l.rate)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmtAmt(l.lineTotal)}</td>
+                      <td>
+                        <button className="btn-ghost btn-sm" onClick={() => removeLine(l.key)}>
+                          <X size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="empty-state" style={{ padding: '1rem' }}>{t('bill.no_items_yet')}</div>
+            )}
+          </section>
+
+          {/* Payment */}
+          <section className="bill-section">
+            <div className="bill-section-title">{t('bill.payment_section')}</div>
+            {payMode === 'paid' ? (
+              <div className="bill-payment-row">
+                <div className="bill-field-label" style={{ marginBottom: '0.5rem' }}>{t('bill.payment_method')}</div>
+                <div className="bill-method-pills">
+                  {PAID_METHODS.map(m => (
+                    <button
+                      key={m.id}
+                      className={`bill-method-pill${paymentMethod === m.id ? ' bill-method-active' : ''}`}
+                      onClick={() => setPaymentMethod(m.id)}
+                    >
+                      {t(m.labelKey)}
+                    </button>
+                  ))}
+                </div>
+                <div className="bill-udharo-note" style={{ color: '#15803d', marginTop: '0.6rem' }}>
+                  {tpl('bill.paid_full_note', { amount: fmtAmt(grandTotal) })}
+                </div>
+              </div>
+            ) : (
+              <div className="bill-payment-row">
+                <div className="bill-udharo-note">
+                  {t('bill.credit_note')}
+                </div>
+                <div style={{ marginTop: '0.75rem' }}>
+                  <div className="bill-field-label">{t('bill.partial_label')}</div>
+                  <input
+                    type="number" step="0.01" min="0"
+                    className="bill-input bill-input-sm"
+                    style={{ marginTop: '0.3rem' }}
+                    value={partialPayAmount}
+                    onChange={e => setPartialPayAmount(e.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
+                {partialNow > 0 && (
+                  <>
+                    <div className="bill-method-pills" style={{ marginTop: '0.6rem' }}>
+                      {PAID_METHODS.map(m => (
+                        <button
+                          key={m.id}
+                          className={`bill-method-pill${paymentMethod === m.id ? ' bill-method-active' : ''}`}
+                          onClick={() => setPaymentMethod(m.id)}
+                        >
+                          {t(m.labelKey)}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="bill-partial-note">
+                      {tpl('bill.partial_collected_note', { paid: fmtAmt(partialNow), due: fmtAmt(dueAmount) })}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </section>
+        </div>
+
+        {/* RIGHT: Summary */}
+        <div className="bill-summary">
+          <div className="bill-summary-title">{t('bill.summary_title')}</div>
+
+          <div className="bill-summary-lines">
+            {lines.map(l => (
+              <div key={l.key} className="bill-summary-line">
+                <span className="bill-summary-line-name">
+                  {l.itemName}{l.variantName ? ` (${l.variantName})` : ''} × {l.qty}{l.unitAbbr}
+                </span>
+                <span>{fmtAmt(l.lineTotal)}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="bill-summary-divider" />
+
+          <div className="bill-summary-row">
+            <span>{t('bill.grand_total')}</span>
+            <span className="bill-summary-total">{fmtAmt(grandTotal)}</span>
+          </div>
+
+          {effectivePaid > 0 && (
+            <div className="bill-summary-row">
+              <span>{payMode === 'paid' ? t('bill.paid') : t('bill.collected_now')}</span>
+              <span style={{ color: '#15803d', fontWeight: 700 }}>{fmtAmt(effectivePaid)}</span>
+            </div>
+          )}
+
+          {dueAmount > 0.005 && (
+            <div className="bill-summary-row">
+              <span>{t('bill.credit_balance')}</span>
+              <span style={{ color: '#dc2626', fontWeight: 700 }}>{fmtAmt(dueAmount)}</span>
+            </div>
+          )}
+
+          <div className="bill-summary-divider" />
+
+          <button
+            className="btn-primary"
+            style={{ width: '100%', padding: '0.7rem' }}
+            disabled={!canReview()}
+            onClick={() => setShowConfirm(true)}
+          >
+            {t('bill.review_save_btn')}
+          </button>
+          {!customer && payMode === 'credit' && (
+            <div className="form-error" style={{ marginTop: '0.5rem', textAlign: 'center' }}>
+              {t('bill.need_customer_credit')}
+            </div>
           )}
         </div>
+      </div>
 
-        {/* Draft lines */}
-        <table className="data-table" style={{ marginTop: '0.75rem' }}>
-          <thead>
-            <tr>
-              <th>Item</th>
-              <th style={{ textAlign: 'right' }}>Qty</th>
-              <th style={{ textAlign: 'right' }}>Rate</th>
-              <th style={{ textAlign: 'right' }}>Discount</th>
-              <th style={{ textAlign: 'right' }}>Total</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {lines.length === 0 && (
-              <tr><td colSpan={6} className="empty-state">No items added yet</td></tr>
-            )}
-            {lines.map((l, i) => (
-              <tr key={i}>
-                <td>
-                  {l.itemName}
-                  {l.variantName && l.variantName !== l.itemName && (
-                    <span className="text-muted"> · {l.variantName}</span>
+      {/* ─── STEP 3 — Confirmation Modal ──────────────────────────────────────── */}
+      {showConfirm && (
+        <div className="confirm-overlay">
+          <div className="confirm-modal">
+            <div className="confirm-modal-header">
+              <CheckCircle size={20} color="#f97316" />
+              <span>{t('bill.confirm_title')}</span>
+            </div>
+
+            <div className="confirm-biz-label">{t('bill.which_business')}</div>
+            <div className="confirm-biz-tiles">
+              {businesses.map(biz => (
+                <button
+                  key={biz.id}
+                  className={`confirm-biz-tile${selectedBusiness?.id === biz.id ? ' confirm-biz-tile-active' : ''}`}
+                  onClick={() => selectBusiness(biz)}
+                >
+                  <div className="confirm-biz-name">{biz.name}</div>
+                  {biz.pan_number && <div className="confirm-biz-pan">PAN: {biz.pan_number}</div>}
+                  {biz.bill_prefix && <div className="confirm-biz-prefix">{biz.bill_prefix}-XXXX</div>}
+                </button>
+              ))}
+            </div>
+
+            <div className="confirm-detail-row">
+              <span className="confirm-label">{t('bill.number')}</span>
+              <span className="confirm-value">{billNumber || (selectedBusiness ? '…' : '—')}</span>
+            </div>
+            <div className="confirm-detail-row">
+              <span className="confirm-label">{t('bill.type')}</span>
+              <span className="confirm-value">
+                {mode === 'sale' ? t('bill.type_sale') : t('bill.type_processing')}
+              </span>
+            </div>
+            {customer && (
+              <div className="confirm-detail-row">
+                <span className="confirm-label">{t('bill.customer')}</span>
+                <span className="confirm-value">
+                  {customer.name}
+                  {customer.outstanding > 0 && (
+                    <span style={{ color: '#dc2626', fontSize: '0.78rem', marginLeft: '0.5rem' }}>
+                      ({t('bill.outstanding_note')}: {fmtAmt(customer.outstanding)})
+                    </span>
                   )}
-                </td>
-                <td style={{ textAlign: 'right' }}>{l.qty} {l.unitAbbr}</td>
-                <td style={{ textAlign: 'right' }}>Rs. {l.rateSnapshot.toLocaleString()}</td>
-                <td style={{ textAlign: 'right' }}>{l.lineDiscount > 0 ? `Rs. ${l.lineDiscount}` : '—'}</td>
-                <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                  Rs. {l.lineTotal.toLocaleString('en-NP', { minimumFractionDigits: 2 })}
-                </td>
-                <td><button className="btn-danger btn-sm" onClick={() => removeLine(i)}>✕</button></td>
-              </tr>
+                </span>
+              </div>
+            )}
+
+            <div className="confirm-divider" />
+
+            <div className="confirm-items-header">
+              <span style={{ flex: 3 }}>{t('bill.item')}</span>
+              <span style={{ flex: 1, textAlign: 'right' }}>{t('bill.qty')}</span>
+              <span style={{ flex: 1, textAlign: 'right' }}>{t('bill.rate')}</span>
+              <span style={{ flex: 1, textAlign: 'right' }}>{t('bill.total')}</span>
+            </div>
+            {lines.map(l => (
+              <div key={l.key} className="confirm-item-row">
+                <span style={{ flex: 3 }}>
+                  {l.itemName}{l.variantName ? ` (${l.variantName})` : ''}
+                </span>
+                <span style={{ flex: 1, textAlign: 'right' }}>{l.qty} {l.unitAbbr}</span>
+                <span style={{ flex: 1, textAlign: 'right' }}>{fmtAmt(l.rate)}</span>
+                <span style={{ flex: 1, textAlign: 'right', fontWeight: 700 }}>{fmtAmt(l.lineTotal)}</span>
+              </div>
             ))}
-          </tbody>
-        </table>
-      </div>
 
-      {/* ── Right: bill summary ── */}
-      <div className="bill-summary">
-        <h3>Bill Summary</h3>
+            <div className="confirm-divider" />
 
-        <div className="summary-row"><span>Subtotal</span><span>Rs. {subtotal.toLocaleString('en-NP', { minimumFractionDigits: 2 })}</span></div>
+            <div className="confirm-totals">
+              <div className="confirm-total-row">
+                <span>{t('bill.grand_total')}</span>
+                <span className="confirm-grand-total">{fmtAmt(grandTotal)}</span>
+              </div>
+              {payMode === 'paid' && (
+                <div className="confirm-total-row">
+                  <span>{t('bill.payment_method')} ({t(`bill.${paymentMethod}_method`)})</span>
+                  <span style={{ color: '#15803d', fontWeight: 700 }}>{fmtAmt(grandTotal)}</span>
+                </div>
+              )}
+              {payMode === 'credit' && partialNow > 0 && (
+                <div className="confirm-total-row">
+                  <span>{t('bill.collected_now')} ({t(`bill.${paymentMethod}_method`)})</span>
+                  <span style={{ color: '#15803d', fontWeight: 700 }}>{fmtAmt(partialNow)}</span>
+                </div>
+              )}
+              {dueAmount > 0.005 && (
+                <div className="confirm-total-row confirm-due-row">
+                  <span>{t('bill.going_to_credit')}</span>
+                  <span>{fmtAmt(dueAmount)}</span>
+                </div>
+              )}
+              {payMode === 'credit' && partialNow === 0 && (
+                <div className="confirm-total-row">
+                  <span>{t('bill.full_on_credit')}</span>
+                  <span style={{ color: '#b45309', fontWeight: 700 }}>{fmtAmt(grandTotal)}</span>
+                </div>
+              )}
+            </div>
 
-        <label className="summary-input-row">
-          <span>Discount (Rs.)</span>
-          <input type="number" step="0.01" min="0" value={discountAmount}
-            onChange={e => setDiscountAmount(e.target.value)} />
-        </label>
+            {saveError && <div className="form-error" style={{ marginTop: '0.5rem' }}>{saveError}</div>}
 
-        <div className="summary-row summary-total">
-          <span>Total</span>
-          <span>Rs. {grandTotal.toLocaleString('en-NP', { minimumFractionDigits: 2 })}</span>
-        </div>
-
-        <label className="summary-input-row">
-          <span>Paid (Rs.)</span>
-          <input type="number" step="0.01" min="0" value={paidAmount}
-            onChange={e => setPaidAmount(e.target.value)} />
-        </label>
-
-        {due > 0 && (
-          <div className="summary-row summary-due">
-            <span>Due (Udharo)</span>
-            <span>Rs. {due.toLocaleString('en-NP', { minimumFractionDigits: 2 })}</span>
+            <div className="confirm-actions">
+              <button className="btn-primary" onClick={handleConfirmSave} disabled={saving || !selectedBusiness}>
+                {saving ? t('bill.saving_label') : t('bill.confirm_save_print')}
+              </button>
+              <button className="btn-ghost" onClick={() => { setShowConfirm(false); setSaveError('') }}>
+                {t('bill.go_back_btn')}
+              </button>
+            </div>
           </div>
-        )}
-
-        <label style={{ marginTop: '0.75rem' }}>
-          Payment method
-          <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as typeof paymentMethod)}>
-            {PAYMENT_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-          </select>
-        </label>
-
-        <label>
-          Notes (optional)
-          <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. market delivery" />
-        </label>
-
-        {error && <p className="form-error">{error}</p>}
-        {successMsg && <p className="success-msg">{successMsg}</p>}
-
-        <button
-          className="btn-primary"
-          style={{ width: '100%', marginTop: '1rem', padding: '0.75rem' }}
-          onClick={saveBill}
-          disabled={saving || lines.length === 0}
-        >
-          {saving ? 'Saving…' : `Save Bill · Rs. ${grandTotal.toLocaleString('en-NP', { minimumFractionDigits: 2 })}`}
-        </button>
-      </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -54,6 +54,14 @@ contextBridge.exposeInMainWorld('api', {
   inventory: {
     getAll: () => ipcRenderer.invoke('inventory:getAll'),
     getByItem: (itemId: number) => ipcRenderer.invoke('inventory:getByItem', itemId),
+    adjust: (
+      itemId: number,
+      variantId: number | null,
+      unitId: number,
+      newQty: number,
+      operatorId: number,
+      notes?: string
+    ) => ipcRenderer.invoke('inventory:adjust', itemId, variantId, unitId, newQty, operatorId, notes),
     addOpening: (
       itemId: number,
       variantId: number | null,
@@ -76,14 +84,34 @@ contextBridge.exposeInMainWorld('api', {
     deactivate: (id: number) => ipcRenderer.invoke('customers:deactivate', id),
   },
 
+  print: {
+    pdf: () => ipcRenderer.invoke('print:pdf'),
+    window: () => ipcRenderer.invoke('print:window'),
+    receipt: (bill: unknown, lines: unknown, business: unknown, printerIp?: string) =>
+      ipcRenderer.invoke('print:receipt', bill, lines, business, printerIp),
+  },
+
+  businesses: {
+    getAll: () => ipcRenderer.invoke('businesses:getAll'),
+    create: (fields: { name: string; pan_number?: string; phone?: string; address?: string; bill_prefix: string }) =>
+      ipcRenderer.invoke('businesses:create', fields),
+    update: (id: number, fields: { name: string; pan_number?: string; phone?: string; address?: string; bill_prefix: string }) =>
+      ipcRenderer.invoke('businesses:update', id, fields),
+    delete: (id: number) => ipcRenderer.invoke('businesses:delete', id),
+  },
+
   bills: {
-    getNextNumber: () => ipcRenderer.invoke('bills:getNextNumber'),
-    getAll: (limit?: number) => ipcRenderer.invoke('bills:getAll', limit),
+    getNextNumber: (businessId: number) => ipcRenderer.invoke('bills:getNextNumber', businessId),
+    getAll: (limit?: number, businessId?: number) => ipcRenderer.invoke('bills:getAll', limit, businessId),
     getById: (id: number) => ipcRenderer.invoke('bills:getById', id),
     getLines: (billId: number) => ipcRenderer.invoke('bills:getLines', billId),
+    getPayments: (billId: number) => ipcRenderer.invoke('bills:getPayments', billId),
+    getCustomerStatement: (customerId: number, businessId?: number) => ipcRenderer.invoke('bills:getCustomerStatement', customerId, businessId),
     create: (input: unknown) => ipcRenderer.invoke('bills:create', input),
     collectPayment: (billId: number, amount: number, method: string, operatorId: number) =>
       ipcRenderer.invoke('bills:collectPayment', billId, amount, method, operatorId),
+    cancel: (billId: number, reason: string, operatorId: number) =>
+      ipcRenderer.invoke('bills:cancel', billId, reason, operatorId),
   },
 
   suppliers: {
@@ -103,11 +131,11 @@ contextBridge.exposeInMainWorld('api', {
   },
 
   dashboard: {
-    getData: () => ipcRenderer.invoke('dashboard:getData'),
-    getSalesReport: (fromDate: string, toDate: string) =>
-      ipcRenderer.invoke('dashboard:getSalesReport', fromDate, toDate),
-    getItemSalesReport: (fromDate: string, toDate: string) =>
-      ipcRenderer.invoke('dashboard:getItemSalesReport', fromDate, toDate),
+    getData: (businessId?: number) => ipcRenderer.invoke('dashboard:getData', businessId),
+    getSalesReport: (fromDate: string, toDate: string, businessId?: number) =>
+      ipcRenderer.invoke('dashboard:getSalesReport', fromDate, toDate, businessId),
+    getItemSalesReport: (fromDate: string, toDate: string, businessId?: number) =>
+      ipcRenderer.invoke('dashboard:getItemSalesReport', fromDate, toDate, businessId),
     getCustomerLedger: () => ipcRenderer.invoke('dashboard:getCustomerLedger'),
   },
 
@@ -124,19 +152,34 @@ contextBridge.exposeInMainWorld('api', {
     deactivateRule: (id: number) => ipcRenderer.invoke('processing:deactivateRule', id),
     runBatch: (input: unknown) => ipcRenderer.invoke('processing:runBatch', input),
     getRecentBatches: (limit?: number) => ipcRenderer.invoke('processing:getRecentBatches', limit),
+    runAdHocBatch: (input: unknown) => ipcRenderer.invoke('processing:runAdHocBatch', input),
+    getRecentMillBatches: (limit?: number) => ipcRenderer.invoke('processing:getRecentMillBatches', limit),
+    getPresetsForItem: (inputItemId: number) => ipcRenderer.invoke('processing:getPresetsForItem', inputItemId),
   },
 
   prices: {
+    getAllCurrent: (priceType: 'sell' | 'processing') =>
+      ipcRenderer.invoke('prices:getAllCurrent', priceType),
     getCurrent: (itemId: number) => ipcRenderer.invoke('prices:getCurrent', itemId),
-    getHistory: (itemId: number, variantId: number | null, priceType: 'sell' | 'buy') =>
+    getHistory: (itemId: number, variantId: number | null, priceType: 'sell' | 'buy' | 'processing') =>
       ipcRenderer.invoke('prices:getHistory', itemId, variantId, priceType),
     set: (
       itemId: number,
       variantId: number | null,
       unitId: number,
       price: number,
-      priceType: 'sell' | 'buy',
+      priceType: 'sell' | 'buy' | 'processing',
       effectiveFrom: string
     ) => ipcRenderer.invoke('prices:set', itemId, variantId, unitId, price, priceType, effectiveFrom),
+  },
+
+  backup: {
+    status: () => ipcRenderer.invoke('backup:status'),
+    saveCredentials: (clientId: string, clientSecret: string) =>
+      ipcRenderer.invoke('backup:saveCredentials', clientId, clientSecret),
+    connect: () => ipcRenderer.invoke('backup:connect'),
+    disconnect: () => ipcRenderer.invoke('backup:disconnect'),
+    now: () => ipcRenderer.invoke('backup:now'),
+    setScheduleHour: (hour: number) => ipcRenderer.invoke('backup:setScheduleHour', hour),
   },
 })

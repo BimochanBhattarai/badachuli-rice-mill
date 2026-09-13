@@ -3,6 +3,7 @@ import type {
   AuthUser, SupplierRow, ItemRow, VariantRow, UnitRow,
   PurchaseLineInput, PurchaseWithSupplier, PurchaseLineWithDetail,
 } from '../../../shared/types/api'
+import { useLanguage } from '../../i18n'
 
 interface Props { currentUser: AuthUser }
 
@@ -15,9 +16,7 @@ interface DraftLine extends PurchaseLineInput {
 export default function StockInPage({ currentUser }: Props) {
   // Supplier picker
   const [supplier, setSupplier] = useState<SupplierRow | null>(null)
-  const [supplierSearch, setSupplierSearch] = useState('')
-  const [supplierResults, setSupplierResults] = useState<SupplierRow[]>([])
-  const [showSupplierDrop, setShowSupplierDrop] = useState(false)
+  const [allSuppliers, setAllSuppliers] = useState<SupplierRow[]>([])
 
   // Item entry
   const [itemSearch, setItemSearch] = useState('')
@@ -49,15 +48,10 @@ export default function StockInPage({ currentUser }: Props) {
     if (res.ok && res.data) setPurchases(res.data)
   }
 
-  useEffect(() => { loadPurchases() }, [])
-
-  // Supplier search
   useEffect(() => {
-    if (!supplierSearch.trim()) { setSupplierResults([]); return }
-    window.api.suppliers.search(supplierSearch).then(r => {
-      if (r.ok && r.data) setSupplierResults(r.data)
-    })
-  }, [supplierSearch])
+    loadPurchases()
+    window.api.suppliers.getAll().then(r => { if (r.ok && r.data) setAllSuppliers(r.data) })
+  }, [])
 
   // Item search — buyable items only
   useEffect(() => {
@@ -67,13 +61,10 @@ export default function StockInPage({ currentUser }: Props) {
     })
   }, [itemSearch])
 
-  async function selectSupplier(s: SupplierRow) {
-    setSupplier(s); setSupplierSearch(s.name)
-    setShowSupplierDrop(false); setSupplierResults([])
-  }
-
-  function clearSupplier() {
-    setSupplier(null); setSupplierSearch(''); setSupplierResults([])
+  function selectSupplierById(id: string) {
+    if (!id) { setSupplier(null); return }
+    const found = allSuppliers.find(s => String(s.id) === id)
+    setSupplier(found ?? null)
   }
 
   async function selectItem(item: ItemRow) {
@@ -151,7 +142,7 @@ export default function StockInPage({ currentUser }: Props) {
       })
       if (!res.ok) { setError(res.error ?? 'Error'); return }
       setSuccessMsg(`Purchase #${res.data!.orderId} recorded — stock updated`)
-      setLines([]); setSupplier(null); setSupplierSearch(''); setNotes('')
+      setLines([]); setSupplier(null); setNotes('')
       loadPurchases()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'IPC error — restart the app')
@@ -169,17 +160,17 @@ export default function StockInPage({ currentUser }: Props) {
     }
   }
 
+  const { t, fmtAmt, fmtDate: fmtDateBS } = useLanguage()
+
   function fmt(n: number) { return n.toLocaleString('en-NP', { minimumFractionDigits: 2 }) }
-  function fmtDate(s: string) {
-    return new Date(s).toLocaleDateString('en-NP', { month: 'short', day: 'numeric', year: 'numeric' })
-  }
+  function fmtDate(s: string) { return fmtDateBS(s) }
 
   return (
     <div className="catalog-page">
       {/* ── Entry form ──────────────────────────────────────── */}
       <div className="inline-form" style={{ marginBottom: '1.5rem' }}>
         <div className="catalog-header" style={{ marginBottom: '0.75rem' }}>
-          <h3>Record Stock-In</h3>
+          <h3>{t('stockin.title')}</h3>
         </div>
 
         {error && <p className="form-error">{error}</p>}
@@ -187,34 +178,18 @@ export default function StockInPage({ currentUser }: Props) {
 
         {/* Supplier picker */}
         <div style={{ marginBottom: '0.75rem' }}>
-          {supplier ? (
-            <div className="customer-selected">
-              <span style={{ fontWeight: 600 }}>{supplier.name}</span>
-              {supplier.phone && <span className="text-muted">{supplier.phone}</span>}
-              <button className="btn-ghost btn-sm" onClick={clearSupplier}>✕</button>
-            </div>
-          ) : (
-            <div className="customer-search-wrap">
-              <input
-                type="text" placeholder="Search supplier…"
-                value={supplierSearch}
-                onChange={e => { setSupplierSearch(e.target.value); setShowSupplierDrop(true) }}
-                onFocus={() => setShowSupplierDrop(true)}
-                onBlur={() => setTimeout(() => setShowSupplierDrop(false), 150)}
-                className="search-input"
-              />
-              {showSupplierDrop && supplierResults.length > 0 && (
-                <ul className="dropdown-list">
-                  {supplierResults.map(s => (
-                    <li key={s.id} onMouseDown={() => selectSupplier(s)}>
-                      <span>{s.name}</span>
-                      {s.phone && <span className="text-muted">{s.phone}</span>}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
+          <select
+            value={supplier ? String(supplier.id) : ''}
+            onChange={e => selectSupplierById(e.target.value)}
+            style={{ width: '100%' }}
+          >
+            <option value="">— {t('stockin.supplier')} —</option>
+            {allSuppliers.map(s => (
+              <option key={s.id} value={s.id}>
+                {s.name}{s.phone ? ` · ${s.phone}` : ''}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Item entry row */}
@@ -301,14 +276,14 @@ export default function StockInPage({ currentUser }: Props) {
                   placeholder="e.g. received from truck, moisture high" style={{ display: 'block', width: '100%', marginTop: '0.25rem' }} />
               </label>
               <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                <div style={{ color: '#9ca3af', fontSize: '0.8rem' }}>Total</div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 700 }}>Rs. {fmt(subtotal)}</div>
+                <div style={{ color: '#9ca3af', fontSize: '0.8rem' }}>{t('bill.total')}</div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 700 }}>{fmtAmt(subtotal)}</div>
                 <button
                   className="btn-primary"
                   style={{ marginTop: '0.5rem', padding: '0.5rem 1.5rem' }}
                   onClick={savePurchase} disabled={saving}
                 >
-                  {saving ? 'Saving…' : 'Record Stock-In'}
+                  {saving ? t('stockin.saving') : t('stockin.save')}
                 </button>
               </div>
             </div>
@@ -318,21 +293,21 @@ export default function StockInPage({ currentUser }: Props) {
 
       {/* ── Purchase history ────────────────────────────────── */}
       <h3 style={{ color: '#9ca3af', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-        Purchase History
+        {t('stockin.history')}
       </h3>
       <table className="data-table">
         <thead>
           <tr>
-            <th>Date</th>
-            <th>Supplier</th>
-            <th style={{ textAlign: 'right' }}>Items</th>
-            <th style={{ textAlign: 'right' }}>Total</th>
+            <th>{t('common.date')}</th>
+            <th>{t('stockin.supplier')}</th>
+            <th style={{ textAlign: 'right' }}>{t('stockin.items')}</th>
+            <th style={{ textAlign: 'right' }}>{t('bill.total')}</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
           {purchases.length === 0 && (
-            <tr><td colSpan={5} className="empty-state">No purchases recorded yet</td></tr>
+            <tr><td colSpan={5} className="empty-state">{t('stockin.no_history')}</td></tr>
           )}
           {purchases.map(p => (
             <>

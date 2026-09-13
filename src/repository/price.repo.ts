@@ -6,10 +6,22 @@ export interface PriceRow {
   variant_id: number | null
   unit_id: number
   price: number
-  price_type: 'sell' | 'buy'
+  price_type: 'sell' | 'buy' | 'processing'
   effective_from: string
   effective_to: string | null
   created_at: string
+}
+
+export interface PriceListEntry {
+  item_id: number
+  item_name: string
+  unit_id: number
+  unit_abbr: string
+  variant_id: number
+  variant_name: string
+  price_id: number | null
+  price: number | null
+  effective_from: string | null
 }
 
 export interface CurrentPrice extends PriceRow {
@@ -79,13 +91,42 @@ export function getCurrentPrice(
     .get(itemId, unitId, priceType) as PriceRow | undefined
 }
 
+export function getAllCurrentPrices(
+  db: Database.Database,
+  priceType: 'sell' | 'processing'
+): PriceListEntry[] {
+  const itemFilter = priceType === 'sell' ? 'i.is_sellable = 1' : 'i.is_processable = 1'
+  return db.prepare(
+    `SELECT
+       i.id        AS item_id,
+       i.name      AS item_name,
+       i.default_unit_id AS unit_id,
+       u.abbreviation    AS unit_abbr,
+       v.id        AS variant_id,
+       v.name      AS variant_name,
+       p.id        AS price_id,
+       p.price,
+       p.effective_from
+     FROM items i
+     JOIN units u    ON u.id = i.default_unit_id
+     JOIN variants v ON v.item_id = i.id AND v.is_active = 1
+     LEFT JOIN prices p
+       ON  p.item_id    = i.id
+       AND p.variant_id = v.id
+       AND p.price_type = ?
+       AND p.effective_to IS NULL
+     WHERE i.is_active = 1 AND ${itemFilter}
+     ORDER BY i.name, v.name`
+  ).all(priceType) as PriceListEntry[]
+}
+
 export function setPrice(
   db: Database.Database,
   itemId: number,
   variantId: number | null,
   unitId: number,
   price: number,
-  priceType: 'sell' | 'buy',
+  priceType: 'sell' | 'buy' | 'processing',
   effectiveFrom: string
 ): number {
   return db.transaction(() => {

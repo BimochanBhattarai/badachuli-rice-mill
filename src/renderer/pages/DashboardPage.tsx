@@ -7,62 +7,65 @@ import {
   ReceiptText, PackagePlus, Cpu, BarChart3,
   RefreshCw, Calendar,
 } from 'lucide-react'
-import type { DashboardData } from '@shared/types/api'
+import type { DashboardData, BusinessRow } from '@shared/types/api'
+import { useLanguage } from '../i18n'
 
 type NavPage =
   | 'dashboard' | 'billing' | 'bills' | 'customers'
-  | 'stockin' | 'suppliers' | 'processing'
+  | 'stockin' | 'suppliers' | 'mill-processing'
   | 'reports' | 'items' | 'prices' | 'stock' | 'units' | 'settings'
 
 interface Props {
   onNavigate: (page: NavPage) => void
 }
 
-const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-
-function formatShortDate(dateStr: string) {
-  const d = new Date(dateStr)
-  return DAY_LABELS[d.getDay()]
-}
-
-function fmt(n: number) {
-  if (n >= 100000) return `Rs. ${(n / 100000).toFixed(1)}L`
-  if (n >= 1000)   return `Rs. ${(n / 1000).toFixed(1)}K`
-  return `Rs. ${n.toLocaleString('en-NP', { minimumFractionDigits: 0 })}`
-}
-
-function fmtFull(n: number) {
-  return `Rs. ${n.toLocaleString('en-NP', { minimumFractionDigits: 2 })}`
-}
-
-function todayLabel() {
-  return new Date().toLocaleDateString('en-NP', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-  })
-}
+const DAY_LABELS_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const DAY_LABELS_NE = ['आइत', 'सोम', 'मंगल', 'बुध', 'बिही', 'शुक्र', 'शनि']
 
 export default function DashboardPage({ onNavigate }: Props) {
+  const { t, lang, fmtAmt, fmtDate } = useLanguage()
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [businesses, setBusinesses] = useState<BusinessRow[]>([])
+  const [businessFilter, setBusinessFilter] = useState<number | null>(null)
 
-  async function load() {
+  const DAY_LABELS = lang === 'ne' ? DAY_LABELS_NE : DAY_LABELS_EN
+
+  function formatShortDate(dateStr: string) {
+    const d = new Date(dateStr)
+    return DAY_LABELS[d.getDay()]
+  }
+
+  function todayLabel() {
+    if (lang === 'ne') return fmtDate(new Date().toISOString())
+    return new Date().toLocaleDateString('en-NP', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    })
+  }
+
+  async function load(bizId?: number | null) {
     setLoading(true)
     try {
-      const res = await window.api.dashboard.getData()
+      const id = bizId ?? businessFilter ?? undefined
+      const res = await window.api.dashboard.getData(id)
       if (res.ok && res.data) setData(res.data)
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    window.api.businesses.getAll().then(r => { if (r.ok && r.data) setBusinesses(r.data) })
+  }, [])
+
+  useEffect(() => { load() }, [businessFilter])
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-3 border-orange-400 border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm text-stone-500">Loading dashboard…</span>
+          <span className="text-sm text-stone-500">{t('dashboard.loading')}</span>
         </div>
       </div>
     )
@@ -71,12 +74,12 @@ export default function DashboardPage({ onNavigate }: Props) {
   if (!data) {
     return (
       <div className="flex items-center justify-center h-64 text-stone-400">
-        Could not load dashboard. Please refresh.
+        {t('dashboard.error')}
       </div>
     )
   }
 
-  const { today: t, weekly_sales } = data
+  const { today: todayData, weekly_sales } = data
   const chartData = weekly_sales.map(d => ({
     day: formatShortDate(d.date),
     total: d.total,
@@ -91,48 +94,65 @@ export default function DashboardPage({ onNavigate }: Props) {
       {/* ── Header ──────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-stone-800">Dashboard</h1>
+          <h1 className="text-xl font-bold text-stone-800">{t('dashboard.title')}</h1>
           <div className="flex items-center gap-1.5 mt-0.5 text-stone-500 text-sm">
             <Calendar size={13} />
             <span>{todayLabel()}</span>
           </div>
         </div>
-        <button
-          onClick={load}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-stone-600 border border-stone-200 rounded-lg hover:bg-orange-50 hover:border-orange-300 hover:text-orange-700 transition-colors"
-        >
-          <RefreshCw size={14} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {businesses.length > 0 && (
+            <div className="biz-filter-tabs" style={{ marginBottom: 0 }}>
+              <button
+                className={`biz-filter-tab${businessFilter === null ? ' biz-filter-tab-active' : ''}`}
+                onClick={() => setBusinessFilter(null)}
+              >{t('common.all')}</button>
+              {businesses.map(b => (
+                <button
+                  key={b.id}
+                  className={`biz-filter-tab${businessFilter === b.id ? ' biz-filter-tab-active' : ''}`}
+                  onClick={() => setBusinessFilter(b.id)}
+                >{b.name}</button>
+              ))}
+            </div>
+          )}
+          <button
+            onClick={() => load()}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-stone-600 border border-stone-200 rounded-lg hover:bg-orange-50 hover:border-orange-300 hover:text-orange-700 transition-colors"
+          >
+            <RefreshCw size={14} />
+            {t('dashboard.refresh')}
+          </button>
+        </div>
       </div>
 
       {/* ── Today's stats ────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
-          label="Today's Sales"
-          value={fmtFull(t.total_billed)}
-          sub={`${t.bill_count} bill${t.bill_count !== 1 ? 's' : ''} today`}
+          label={t('dashboard.today_sales')}
+          value={fmtAmt(todayData.total_billed)}
+          sub={`${todayData.bill_count} ${t('dashboard.bills_today')}`}
           icon={TrendingUp}
           style="orange"
         />
         <StatCard
-          label="Collected Today"
-          value={fmtFull(t.total_collected)}
-          sub="cash · bank · digital"
+          label={t('dashboard.collected_today')}
+          value={fmtAmt(todayData.total_collected)}
+          sub={t('dashboard.cash_bank_digital')}
           icon={Wallet}
           style="green"
         />
         <StatCard
-          label="Total Outstanding"
-          value={fmtFull(data.total_outstanding)}
-          sub={hasOutstanding ? 'pending udharo' : 'all clear'}
+          label={t('dashboard.outstanding')}
+          value={fmtAmt(data.total_outstanding)}
+          sub={hasOutstanding ? t('dashboard.pending_udharo') : t('dashboard.all_clear')}
           icon={AlertCircle}
           style={hasOutstanding ? 'red' : 'neutral'}
         />
         <StatCard
-          label="Items in Stock"
+          label={t('dashboard.stock_items')}
           value={String(data.stock_item_count)}
-          sub="distinct items"
+          sub={t('dashboard.distinct_items')}
           icon={Package}
           style="amber"
         />
@@ -140,21 +160,20 @@ export default function DashboardPage({ onNavigate }: Props) {
 
       {/* ── Charts row ───────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* 7-day sales bar chart */}
         <div className="lg:col-span-2 bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
           <div className="flex items-center justify-between px-5 pt-5 pb-3">
             <div>
-              <h3 className="text-sm font-bold text-stone-800">7-Day Sales Trend</h3>
-              <p className="text-xs text-stone-400 mt-0.5">Last 7 days revenue</p>
+              <h3 className="text-sm font-bold text-stone-800">{t('dashboard.7day_trend')}</h3>
+              <p className="text-xs text-stone-400 mt-0.5">{t('dashboard.last_7_revenue')}</p>
             </div>
             <div className="px-3 py-1 bg-orange-50 rounded-full border border-orange-200">
-              <span className="text-xs font-bold text-orange-600">{fmt(weekTotal)} this week</span>
+              <span className="text-xs font-bold text-orange-600">{fmtAmt(weekTotal)} {t('dashboard.this_week')}</span>
             </div>
           </div>
           <div className="px-5 pb-5">
             {weekTotal === 0 ? (
               <div className="flex items-center justify-center h-40 text-stone-400 text-sm">
-                No sales in the last 7 days
+                {t('dashboard.no_sales_7d')}
               </div>
             ) : (
               <ResponsiveContainer width="100%" height={190}>
@@ -182,7 +201,7 @@ export default function DashboardPage({ onNavigate }: Props) {
                       color: '#fff',
                       boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
                     }}
-                    formatter={(v) => [`Rs. ${Number(v).toLocaleString('en-NP')}`, 'Sales']}
+                    formatter={(v) => [fmtAmt(Number(v)), t('reports.sales')]}
                     labelStyle={{ color: '#f97316', fontWeight: 700, marginBottom: 2 }}
                   />
                   <Bar
@@ -199,21 +218,21 @@ export default function DashboardPage({ onNavigate }: Props) {
 
         {/* Today summary */}
         <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-5 flex flex-col gap-0">
-          <h3 className="text-sm font-bold text-stone-800 mb-4">Today at a Glance</h3>
-          <GlanceRow label="Billed" value={fmtFull(t.total_billed)} />
-          <GlanceRow label="Collected" value={fmtFull(t.total_collected)} color="text-green-600" />
-          {t.new_udharo > 0 && (
-            <GlanceRow label="New Udharo" value={fmtFull(t.new_udharo)} color="text-red-500" />
+          <h3 className="text-sm font-bold text-stone-800 mb-4">{t('dashboard.today_glance')}</h3>
+          <GlanceRow label={t('dashboard.billed')} value={fmtAmt(todayData.total_billed)} />
+          <GlanceRow label={t('dashboard.collected')} value={fmtAmt(todayData.total_collected)} color="text-green-600" />
+          {todayData.new_udharo > 0 && (
+            <GlanceRow label={t('dashboard.new_udharo')} value={fmtAmt(todayData.new_udharo)} color="text-red-500" />
           )}
           <div className="border-t border-stone-100 my-3" />
-          <GlanceRow label="Bills today" value={String(t.bill_count)} small />
-          <GlanceRow label="Batches today" value={String(data.processing_batches_today)} small />
+          <GlanceRow label={t('dashboard.bills_today')} value={String(todayData.bill_count)} small />
+          <GlanceRow label={t('dashboard.batches_today')} value={String(data.processing_batches_today)} small />
           {data.total_outstanding > 0 && (
             <>
               <div className="border-t border-stone-100 my-3" />
               <div className="flex items-center justify-between rounded-lg bg-red-50 border border-red-100 px-3 py-2">
-                <span className="text-xs font-semibold text-red-600">Total outstanding</span>
-                <span className="text-sm font-extrabold text-red-600">{fmtFull(data.total_outstanding)}</span>
+                <span className="text-xs font-semibold text-red-600">{t('dashboard.total_outstanding_label')}</span>
+                <span className="text-sm font-extrabold text-red-600">{fmtAmt(data.total_outstanding)}</span>
               </div>
             </>
           )}
@@ -222,12 +241,12 @@ export default function DashboardPage({ onNavigate }: Props) {
 
       {/* ── Quick actions ─────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-5">
-        <h3 className="text-sm font-bold text-stone-800 mb-4">Quick Actions</h3>
+        <h3 className="text-sm font-bold text-stone-800 mb-4">{t('dashboard.quick_actions')}</h3>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <QuickAction label="New Bill"    icon={ReceiptText} color="bg-orange-500" hover="hover:shadow-orange-200" onClick={() => onNavigate('billing')} />
-          <QuickAction label="Stock-In"    icon={PackagePlus} color="bg-amber-500"  hover="hover:shadow-amber-200"  onClick={() => onNavigate('stockin')} />
-          <QuickAction label="Processing"  icon={Cpu}         color="bg-yellow-500" hover="hover:shadow-yellow-200" onClick={() => onNavigate('processing')} />
-          <QuickAction label="Reports"     icon={BarChart3}   color="bg-stone-700"  hover="hover:shadow-stone-200"  onClick={() => onNavigate('reports')} />
+          <QuickAction label={t('nav.new_bill')}      icon={ReceiptText} color="bg-orange-500" hover="hover:shadow-orange-200" onClick={() => onNavigate('billing')} />
+          <QuickAction label={t('nav.stock_in')}      icon={PackagePlus} color="bg-amber-500"  hover="hover:shadow-amber-200"  onClick={() => onNavigate('stockin')} />
+          <QuickAction label={t('nav.mill_processing')} icon={Cpu}       color="bg-yellow-500" hover="hover:shadow-yellow-200" onClick={() => onNavigate('mill-processing')} />
+          <QuickAction label={t('nav.reports')}       icon={BarChart3}   color="bg-stone-700"  hover="hover:shadow-stone-200"  onClick={() => onNavigate('reports')} />
         </div>
       </div>
     </div>

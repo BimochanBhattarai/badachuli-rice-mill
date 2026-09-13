@@ -15,9 +15,9 @@ import type {
 } from '../../repository/dashboard.repo'
 
 export function registerDashboardHandlers(db: Database.Database): void {
-  ipcMain.handle('dashboard:getData', (): IpcResult<DashboardData> => {
+  ipcMain.handle('dashboard:getData', (_e, businessId?: number): IpcResult<DashboardData> => {
     try {
-      return { ok: true, data: getDashboardData(db) }
+      return { ok: true, data: getDashboardData(db, businessId) }
     } catch (e) {
       return { ok: false, error: String(e) }
     }
@@ -25,9 +25,9 @@ export function registerDashboardHandlers(db: Database.Database): void {
 
   ipcMain.handle(
     'dashboard:getSalesReport',
-    (_e, fromDate: string, toDate: string): IpcResult<SalesReport> => {
+    (_e, fromDate: string, toDate: string, businessId?: number): IpcResult<SalesReport> => {
       try {
-        return { ok: true, data: getSalesReport(db, fromDate, toDate) }
+        return { ok: true, data: getSalesReport(db, fromDate, toDate, businessId) }
       } catch (e) {
         return { ok: false, error: String(e) }
       }
@@ -36,9 +36,9 @@ export function registerDashboardHandlers(db: Database.Database): void {
 
   ipcMain.handle(
     'dashboard:getItemSalesReport',
-    (_e, fromDate: string, toDate: string): IpcResult<ItemSalesLine[]> => {
+    (_e, fromDate: string, toDate: string, businessId?: number): IpcResult<ItemSalesLine[]> => {
       try {
-        return { ok: true, data: getItemSalesReport(db, fromDate, toDate) }
+        return { ok: true, data: getItemSalesReport(db, fromDate, toDate, businessId) }
       } catch (e) {
         return { ok: false, error: String(e) }
       }

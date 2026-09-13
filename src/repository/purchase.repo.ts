@@ -49,13 +49,12 @@ export interface PurchaseLineWithDetail {
 function itemCategory(
   db: Database.Database,
   itemId: number
-): 'raw_material' | 'finished' | 'byproduct' | 'consumable' {
+): 'raw_material' | 'finished' | 'byproduct' {
   const item = db.prepare(
-    'SELECT is_buyable, is_processable FROM items WHERE id = ?'
-  ).get(itemId) as { is_buyable: number; is_processable: number } | undefined
-  if (!item) return 'raw_material'
-  if (item.is_buyable && item.is_processable) return 'raw_material'
-  return 'consumable'
+    'SELECT is_sellable FROM items WHERE id = ?'
+  ).get(itemId) as { is_sellable: number } | undefined
+  if (item?.is_sellable) return 'finished'
+  return 'raw_material'
 }
 
 export function createPurchase(
@@ -77,7 +76,7 @@ export function createPurchase(
       `INSERT INTO inventory_transactions
          (item_id, variant_id, unit_id, qty_delta, category, tx_type,
           reference_id, reference_type, operator_id)
-       VALUES (?, ?, ?, ?, ?, 'purchase', ?, 'purchase_order', ?)`
+       VALUES (?, ?, ?, ?, ?, 'stock_in', ?, 'purchase_order', ?)`
     )
 
     for (const line of input.lines) {

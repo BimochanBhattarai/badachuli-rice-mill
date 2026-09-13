@@ -1,296 +1,218 @@
 import { useEffect, useState } from 'react'
-import type { ItemRow, VariantRow, UnitRow, CurrentPrice } from '../../../shared/types/api'
+import type { PriceListEntry } from '../../../shared/types/api'
+import { useLanguage } from '../../i18n'
 
-type PriceType = 'sell' | 'buy'
+type PriceTab = 'sell' | 'processing'
 
-interface SetPriceForm {
-  variantId: string
-  unitId: string
+interface InlineForm {
+  itemId: number
+  variantId: number
+  unitId: number
   price: string
-  priceType: PriceType
   effectiveFrom: string
 }
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10)
-}
+function today() { return new Date().toISOString().slice(0, 10) }
 
 export default function PricesPage() {
-  const [items, setItems] = useState<ItemRow[]>([])
-  const [selectedItem, setSelectedItem] = useState<ItemRow | null>(null)
-  const [variants, setVariants] = useState<VariantRow[]>([])
-  const [units, setUnits] = useState<UnitRow[]>([])
-  const [currentPrices, setCurrentPrices] = useState<CurrentPrice[]>([])
+  const { t, fmtAmt } = useLanguage()
+  const [tab, setTab] = useState<PriceTab>('sell')
+  const [entries, setEntries] = useState<PriceListEntry[]>([])
   const [search, setSearch] = useState('')
-
-  const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState<SetPriceForm>({
-    variantId: '',
-    unitId: '',
-    price: '',
-    priceType: 'sell',
-    effectiveFrom: today(),
-  })
-  const [formError, setFormError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [inlineForm, setInlineForm] = useState<InlineForm | null>(null)
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
 
-  useEffect(() => {
-    window.api.units.getAll().then(r => {
-      if (r.ok && r.data) {
-        setUnits(r.data)
-        const def = r.data.find(u => u.is_default)
-        if (def) setForm(f => ({ ...f, unitId: String(def.id) }))
-      }
-    })
-  }, [])
-
-  useEffect(() => {
-    window.api.items.search(search).then(r => { if (r.ok && r.data) setItems(r.data) })
-  }, [search])
-
-  async function selectItem(item: ItemRow) {
-    setSelectedItem(item)
-    setShowForm(false)
-    const [vRes, pRes] = await Promise.all([
-      window.api.variants.getByItem(item.id),
-      window.api.prices.getCurrent(item.id),
-    ])
-    const activeVariants = (vRes.data ?? []).filter(v => v.is_active)
-    setVariants(activeVariants)
-    setCurrentPrices(pRes.data ?? [])
-    setForm(f => ({
-      ...f,
-      variantId: activeVariants.find(v => v.is_default)?.id
-        ? String(activeVariants.find(v => v.is_default)!.id)
-        : activeVariants[0]?.id ? String(activeVariants[0].id) : '',
-      unitId: String(item.default_unit_id),
-    }))
+  async function load(priceType: PriceTab) {
+    setLoading(true)
+    try {
+      const res = await window.api.prices.getAllCurrent(priceType)
+      if (res.ok && res.data) setEntries(res.data)
+    } finally {
+      setLoading(false)
+    }
   }
 
-  function openForm(priceType: PriceType, variantId?: number) {
-    setFormError('')
-    setForm(f => ({
-      ...f,
-      priceType,
-      variantId: variantId ? String(variantId) : f.variantId,
-      price: '',
+  useEffect(() => {
+    setInlineForm(null)
+    setSaveError('')
+    setSearch('')
+    load(tab)
+  }, [tab])
+
+  function openForm(e: PriceListEntry) {
+    setInlineForm({
+      itemId: e.item_id,
+      variantId: e.variant_id,
+      unitId: e.unit_id,
+      price: e.price !== null ? String(e.price) : '',
       effectiveFrom: today(),
-    }))
-    setShowForm(true)
+    })
+    setSaveError('')
   }
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!selectedItem) return
-    setFormError('')
-    const price = parseFloat(form.price)
-    if (isNaN(price) || price < 0) { setFormError('Enter a valid price (0 or above)'); return }
-    const unitId = parseInt(form.unitId)
-    if (!unitId) { setFormError('Select a unit'); return }
-    const variantId = form.variantId ? parseInt(form.variantId) : null
-    setSaving(true)
+  async function submitPrice() {
+    if (!inlineForm) return
+    const price = parseFloat(inlineForm.price)
+    if (isNaN(price) || price < 0) { setSaveError('Enter a valid price'); return }
+    setSaving(true); setSaveError('')
     try {
       const res = await window.api.prices.set(
-        selectedItem.id,
-        variantId,
-        unitId,
+        inlineForm.itemId,
+        inlineForm.variantId,
+        inlineForm.unitId,
         price,
-        form.priceType,
-        form.effectiveFrom
+        tab,
+        inlineForm.effectiveFrom
       )
-      if (!res.ok) { setFormError(res.error ?? 'Unknown error'); return }
-      setShowForm(false)
-      const pRes = await window.api.prices.getCurrent(selectedItem.id)
-      setCurrentPrices(pRes.data ?? [])
+      if (!res.ok) { setSaveError(res.error ?? 'Save failed'); return }
+      setInlineForm(null)
+      load(tab)
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'IPC error')
+      setSaveError(err instanceof Error ? err.message : 'Error')
     } finally {
       setSaving(false)
     }
   }
 
-  const sellPrices = currentPrices.filter(p => p.price_type === 'sell')
-  const buyPrices = currentPrices.filter(p => p.price_type === 'buy')
+  const filtered = search.trim()
+    ? entries.filter(e =>
+        e.item_name.toLowerCase().includes(search.toLowerCase()) ||
+        e.variant_name.toLowerCase().includes(search.toLowerCase())
+      )
+    : entries
+
+  const grouped: Map<number, { itemName: string; rows: PriceListEntry[] }> = new Map()
+  for (const e of filtered) {
+    if (!grouped.has(e.item_id)) grouped.set(e.item_id, { itemName: e.item_name, rows: [] })
+    grouped.get(e.item_id)!.rows.push(e)
+  }
+
+  const tabLabel = tab === 'sell' ? t('prices.sell_label') : t('prices.processing_label')
 
   return (
-    <div className="catalog-page">
+    <div className="catalog-page" style={{ maxWidth: 780 }}>
       <div className="catalog-header">
-        <h2>Prices</h2>
+        <h2>{t('prices.title')}</h2>
       </div>
 
-      <div className="prices-layout">
-        {/* ── Item picker ── */}
-        <div className="item-picker">
-          <input
-            type="text"
-            placeholder="Search items…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="search-input"
-          />
-          <ul className="item-list">
-            {items.map(item => (
-              <li
-                key={item.id}
-                className={`item-list-row${selectedItem?.id === item.id ? ' item-list-row-active' : ''}`}
-                onClick={() => selectItem(item)}
-              >
-                <span>{item.name}</span>
-                <span className={`badge badge-${item.category}`}>{item.category.replace('_', ' ')}</span>
-              </li>
-            ))}
-            {items.length === 0 && <li className="empty-state">No items</li>}
-          </ul>
-        </div>
+      <div className="price-tabs">
+        <button
+          className={`price-tab-btn${tab === 'sell' ? ' price-tab-active' : ''}`}
+          onClick={() => setTab('sell')}
+        >
+          {t('prices.sell_tab')}
+        </button>
+        <button
+          className={`price-tab-btn${tab === 'processing' ? ' price-tab-active' : ''}`}
+          onClick={() => setTab('processing')}
+        >
+          {t('prices.processing_tab')}
+        </button>
+      </div>
 
-        {/* ── Price panel ── */}
-        <div className="price-panel">
-          {!selectedItem && (
-            <p className="empty-state" style={{ marginTop: '3rem' }}>← Select an item to manage its prices</p>
-          )}
+      <div className="catalog-filters" style={{ marginTop: '0.75rem' }}>
+        <input
+          type="text"
+          placeholder={t('common.search')}
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="search-input"
+        />
+      </div>
 
-          {selectedItem && (
-            <>
-              <div className="price-panel-header">
-                <h3>{selectedItem.name}</h3>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button className="btn-primary btn-sm" onClick={() => openForm('sell')}>
-                    + Sell Price
-                  </button>
-                  <button className="btn-ghost btn-sm" onClick={() => openForm('buy')}>
-                    + Buy Price
-                  </button>
-                </div>
-              </div>
-
-              {showForm && (
-                <div className="inline-form" style={{ marginBottom: '1rem' }}>
-                  <h3>Set {form.priceType === 'sell' ? 'Selling' : 'Buying'} Price</h3>
-                  {formError && <p className="form-error">{formError}</p>}
-                  <form onSubmit={submit}>
-                    <div className="form-row">
-                      {variants.length > 1 && (
-                        <label>
-                          Variant
-                          <select
-                            value={form.variantId}
-                            onChange={e => setForm(f => ({ ...f, variantId: e.target.value }))}
-                          >
-                            {variants.map(v => (
-                              <option key={v.id} value={v.id}>{v.name}</option>
-                            ))}
-                          </select>
-                        </label>
-                      )}
-                      <label>
-                        Unit
-                        <select
-                          value={form.unitId}
-                          onChange={e => setForm(f => ({ ...f, unitId: e.target.value }))}
+      {loading ? (
+        <div className="empty-state">{t('common.loading')}</div>
+      ) : filtered.length === 0 ? (
+        <div className="empty-state">{t('common.no_data')}</div>
+      ) : (
+        <div className="price-list">
+          {[...grouped.values()].map(group => (
+            <div key={group.rows[0].item_id} className="price-group">
+              <div className="price-group-name">{group.itemName}</div>
+              <table className="data-table" style={{ marginTop: '0.35rem', marginBottom: '0.75rem' }}>
+                <thead>
+                  <tr>
+                    <th>{t('bill.variant')}</th>
+                    <th style={{ textAlign: 'right' }}>{tabLabel}</th>
+                    <th>{t('stock.unit')}</th>
+                    <th>{t('prices.since')}</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {group.rows.map(e => (
+                    <tr key={e.variant_id}>
+                      <td style={{ fontWeight: 600 }}>{e.variant_name}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        {e.price !== null
+                          ? <strong>{fmtAmt(Number(e.price))}</strong>
+                          : <span className="text-muted">{t('prices.not_set')}</span>}
+                      </td>
+                      <td className="text-muted">/{e.unit_abbr}</td>
+                      <td className="text-muted" style={{ fontSize: '0.8rem' }}>
+                        {e.effective_from ?? '—'}
+                      </td>
+                      <td>
+                        <button
+                          className={e.price !== null ? 'btn-ghost btn-sm' : 'btn-primary btn-sm'}
+                          onClick={() => openForm(e)}
                         >
-                          {units.map(u => (
-                            <option key={u.id} value={u.id}>{u.name} ({u.abbreviation})</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Price (Rs.)
+                          {e.price !== null ? t('prices.update') : t('prices.set_price')}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {group.rows.some(e => inlineForm?.variantId === e.variant_id && inlineForm?.itemId === e.item_id) && (
+                <div className="price-inline-form">
+                  {saveError && <div className="form-error" style={{ marginBottom: '0.5rem' }}>{saveError}</div>}
+                  <div className="price-inline-form-row">
+                    <div>
+                      <div className="bill-field-label">
+                        {tabLabel} (Rs./{group.rows.find(e => e.variant_id === inlineForm?.variantId)?.unit_abbr})
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.3rem' }}>
                         <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={form.price}
-                          onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
-                          placeholder="0.00"
-                          required
+                          type="number" step="0.01" min="0"
+                          className="bill-input"
+                          style={{ width: 140 }}
+                          value={inlineForm?.price ?? ''}
+                          onChange={e => setInlineForm(f => f ? { ...f, price: e.target.value } : f)}
                           autoFocus
+                          onKeyDown={e => { if (e.key === 'Enter') submitPrice() }}
+                          placeholder="0.00"
                         />
-                      </label>
-                      <label>
-                        Effective From
-                        <input
-                          type="date"
-                          value={form.effectiveFrom}
-                          onChange={e => setForm(f => ({ ...f, effectiveFrom: e.target.value }))}
-                          required
-                        />
-                      </label>
+                        <div>
+                          <div className="bill-field-label">{t('prices.effective_from')}</div>
+                          <input
+                            type="date"
+                            className="bill-input"
+                            style={{ width: 150, marginTop: '0.3rem' }}
+                            value={inlineForm?.effectiveFrom ?? today()}
+                            onChange={e => setInlineForm(f => f ? { ...f, effectiveFrom: e.target.value } : f)}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.4rem', alignSelf: 'flex-end' }}>
+                          <button className="btn-primary btn-sm" onClick={submitPrice} disabled={saving}>
+                            {saving ? t('common.saving') : t('common.save')}
+                          </button>
+                          <button className="btn-ghost btn-sm" onClick={() => { setInlineForm(null); setSaveError('') }}>
+                            {t('common.cancel')}
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <div className="form-actions">
-                      <button type="submit" className="btn-primary" disabled={saving}>
-                        {saving ? 'Saving…' : 'Set Price'}
-                      </button>
-                      <button type="button" className="btn-ghost" onClick={() => setShowForm(false)}>
-                        Cancel
-                      </button>
-                    </div>
-                  </form>
+                  </div>
                 </div>
               )}
-
-              <div className="price-section">
-                <div className="price-section-label">Selling Prices</div>
-                <PriceTable
-                  prices={sellPrices}
-                  onUpdate={(variantId) => openForm('sell', variantId ?? undefined)}
-                />
-              </div>
-
-              <div className="price-section">
-                <div className="price-section-label">Buying / Purchase Prices</div>
-                <PriceTable
-                  prices={buyPrices}
-                  onUpdate={(variantId) => openForm('buy', variantId ?? undefined)}
-                />
-              </div>
-            </>
-          )}
+            </div>
+          ))}
         </div>
-      </div>
+      )}
     </div>
-  )
-}
-
-function PriceTable({
-  prices,
-  onUpdate,
-}: {
-  prices: CurrentPrice[]
-  variants?: VariantRow[]
-  onUpdate: (variantId: number | null) => void
-}) {
-  if (prices.length === 0) {
-    return <p className="empty-state" style={{ padding: '0.75rem 0' }}>No price set</p>
-  }
-  return (
-    <table className="data-table data-table-sm" style={{ marginBottom: '0.5rem' }}>
-      <thead>
-        <tr>
-          <th>Variant</th>
-          <th>Price</th>
-          <th>Unit</th>
-          <th>Since</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {prices.map(p => (
-          <tr key={p.id}>
-            <td>{p.variant_name ?? '—'}</td>
-            <td><strong>Rs. {Number(p.price).toLocaleString('en-NP', { minimumFractionDigits: 2 })}</strong></td>
-            <td>/{p.unit_abbreviation}</td>
-            <td style={{ color: '#6b7280', fontSize: '0.8rem' }}>{p.effective_from}</td>
-            <td className="row-actions">
-              <button
-                className="btn-ghost btn-sm"
-                onClick={() => onUpdate(p.variant_id)}
-              >
-                Update
-              </button>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
   )
 }

@@ -47,7 +47,7 @@ export function registerItemHandlers(db: Database.Database): void {
     (
       _e,
       query: string,
-      filter?: { sellable?: boolean; buyable?: boolean; processable?: boolean }
+      filter?: { sellable?: boolean; buyable?: boolean; processable?: boolean; stockable?: boolean }
     ): IpcResult<ItemWithUnit[]> => {
       try {
         return { ok: true, data: searchItems(db, query ?? '', filter) }
@@ -81,9 +81,7 @@ export function registerItemHandlers(db: Database.Database): void {
         const variants = getVariantsByItem(db, itemId)
         return { ok: true, data: { id: itemId, variantId: variants[0].id } }
       } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e)
-        if (msg.includes('UNIQUE')) return { ok: false, error: 'An item with that name already exists' }
-        return { ok: false, error: msg }
+        return { ok: false, error: e instanceof Error ? e.message : String(e) }
       }
     }
   )
@@ -106,9 +104,7 @@ export function registerItemHandlers(db: Database.Database): void {
         updateItem(db, id, name.trim(), defaultUnitId, isBuyable, isSellable, isProcessable)
         return { ok: true }
       } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e)
-        if (msg.includes('UNIQUE')) return { ok: false, error: 'An item with that name already exists' }
-        return { ok: false, error: msg }
+        return { ok: false, error: e instanceof Error ? e.message : String(e) }
       }
     }
   )

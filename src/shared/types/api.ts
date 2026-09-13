@@ -1,3 +1,13 @@
+export interface BusinessRow {
+  id: number
+  name: string
+  pan_number: string | null
+  phone: string | null
+  address: string | null
+  bill_prefix: string
+  bill_next_sequence: number
+}
+
 export interface IpcResult<T = null> {
   ok: boolean
   data?: T
@@ -46,10 +56,22 @@ export interface PriceRow {
   variant_id: number | null
   unit_id: number
   price: number
-  price_type: 'sell' | 'buy'
+  price_type: 'sell' | 'buy' | 'processing'
   effective_from: string
   effective_to: string | null
   created_at: string
+}
+
+export interface PriceListEntry {
+  item_id: number
+  item_name: string
+  unit_id: number
+  unit_abbr: string
+  variant_id: number
+  variant_name: string
+  price_id: number | null
+  price: number | null
+  effective_from: string | null
 }
 
 export interface CurrentPrice extends PriceRow {
@@ -129,6 +151,29 @@ export interface TodaySummary {
   new_udharo: number
 }
 
+export interface PaymentRow {
+  id: number
+  bill_id: number
+  customer_id: number | null
+  amount: number
+  method: string
+  reference: string | null
+  notes: string | null
+  operator_id: number
+  created_at: string
+}
+
+export interface CustomerStatementEntry {
+  entry_type: 'sale_line' | 'payment'
+  created_at: string
+  bill_id: number
+  bill_number: string
+  business_name: string
+  description: string
+  debit: number
+  credit: number
+}
+
 export interface WeeklySalesDay {
   date: string
   total: number
@@ -181,6 +226,19 @@ export interface CustomerLedgerLine {
 export interface ElectronAPI {
   ping: () => Promise<string>
 
+  print: {
+    pdf: () => Promise<IpcResult>
+    window: () => Promise<IpcResult>
+    receipt: (bill: BillWithCustomer, lines: BillLineWithDetail[], business: BusinessRow, printerIp?: string) => Promise<IpcResult>
+  }
+
+  businesses: {
+    getAll: () => Promise<IpcResult<BusinessRow[]>>
+    create: (fields: { name: string; pan_number?: string; phone?: string; address?: string; bill_prefix: string }) => Promise<IpcResult<{ id: number }>>
+    update: (id: number, fields: { name: string; pan_number?: string; phone?: string; address?: string; bill_prefix: string }) => Promise<IpcResult>
+    delete: (id: number) => Promise<IpcResult>
+  }
+
   suppliers: {
     getAll: () => Promise<IpcResult<SupplierRow[]>>
     search: (query: string) => Promise<IpcResult<SupplierRow[]>>
@@ -196,9 +254,9 @@ export interface ElectronAPI {
   }
 
   dashboard: {
-    getData: () => Promise<IpcResult<DashboardData>>
-    getSalesReport: (fromDate: string, toDate: string) => Promise<IpcResult<SalesReport>>
-    getItemSalesReport: (fromDate: string, toDate: string) => Promise<IpcResult<ItemSalesLine[]>>
+    getData: (businessId?: number) => Promise<IpcResult<DashboardData>>
+    getSalesReport: (fromDate: string, toDate: string, businessId?: number) => Promise<IpcResult<SalesReport>>
+    getItemSalesReport: (fromDate: string, toDate: string, businessId?: number) => Promise<IpcResult<ItemSalesLine[]>>
     getCustomerLedger: () => Promise<IpcResult<CustomerLedgerLine[]>>
   }
 
@@ -229,7 +287,7 @@ export interface ElectronAPI {
     getById: (id: number) => Promise<IpcResult<ItemRow>>
     search: (
       query: string,
-      filter?: { sellable?: boolean; buyable?: boolean; processable?: boolean }
+      filter?: { sellable?: boolean; buyable?: boolean; processable?: boolean; stockable?: boolean }
     ) => Promise<IpcResult<ItemRow[]>>
     create: (
       name: string,
@@ -260,6 +318,14 @@ export interface ElectronAPI {
   inventory: {
     getAll: () => Promise<IpcResult<StockLevel[]>>
     getByItem: (itemId: number) => Promise<IpcResult<StockLevel[]>>
+    adjust: (
+      itemId: number,
+      variantId: number | null,
+      unitId: number,
+      newQty: number,
+      operatorId: number,
+      notes?: string
+    ) => Promise<IpcResult>
     addOpening: (
       itemId: number,
       variantId: number | null,
@@ -281,12 +347,15 @@ export interface ElectronAPI {
   }
 
   bills: {
-    getNextNumber: () => Promise<IpcResult<{ billNumber: string }>>
-    getAll: (limit?: number) => Promise<IpcResult<BillWithCustomer[]>>
+    getNextNumber: (businessId: number) => Promise<IpcResult<{ billNumber: string }>>
+    getAll: (limit?: number, businessId?: number) => Promise<IpcResult<BillWithCustomer[]>>
     getById: (id: number) => Promise<IpcResult<BillWithCustomer>>
     getLines: (billId: number) => Promise<IpcResult<BillLineWithDetail[]>>
+    getPayments: (billId: number) => Promise<IpcResult<PaymentRow[]>>
+    getCustomerStatement: (customerId: number, businessId?: number) => Promise<IpcResult<CustomerStatementEntry[]>>
     create: (input: CreateBillInput) => Promise<IpcResult<{ billId: number; billNumber: string }>>
     collectPayment: (billId: number, amount: number, method: string, operatorId: number) => Promise<IpcResult>
+    cancel: (billId: number, reason: string, operatorId: number) => Promise<IpcResult>
   }
 
   processing: {
@@ -302,21 +371,25 @@ export interface ElectronAPI {
     deactivateRule: (id: number) => Promise<IpcResult>
     runBatch: (input: RunBatchInput) => Promise<IpcResult<{ batchId: number }>>
     getRecentBatches: (limit?: number) => Promise<IpcResult<BatchWithRule[]>>
+    runAdHocBatch: (input: AdHocBatchInput) => Promise<IpcResult<{ batchId: number }>>
+    getRecentMillBatches: (limit?: number) => Promise<IpcResult<BatchWithRule[]>>
+    getPresetsForItem: (inputItemId: number) => Promise<IpcResult<MillPreset[]>>
   }
 
   prices: {
+    getAllCurrent: (priceType: 'sell' | 'processing') => Promise<IpcResult<PriceListEntry[]>>
     getCurrent: (itemId: number) => Promise<IpcResult<CurrentPrice[]>>
     getHistory: (
       itemId: number,
       variantId: number | null,
-      priceType: 'sell' | 'buy'
+      priceType: 'sell' | 'buy' | 'processing'
     ) => Promise<IpcResult<PriceRow[]>>
     set: (
       itemId: number,
       variantId: number | null,
       unitId: number,
       price: number,
-      priceType: 'sell' | 'buy',
+      priceType: 'sell' | 'buy' | 'processing',
       effectiveFrom: string
     ) => Promise<IpcResult<{ id: number }>>
   }
@@ -340,6 +413,7 @@ export interface CustomerWithBalance extends CustomerRow {
 
 export interface BillRow {
   id: number
+  business_id: number
   bill_number: string
   bill_type: 'sale' | 'processing'
   status: 'draft' | 'active' | 'cancelled'
@@ -355,6 +429,7 @@ export interface BillRow {
 }
 
 export interface BillWithCustomer extends BillRow {
+  business_name: string
   customer_name: string | null
   customer_phone: string | null
 }
@@ -435,6 +510,17 @@ export interface RunBatchInput {
   operatorId: number
 }
 
+export interface MillPreset {
+  id: number
+  output_item_id: number
+  output_item_name: string
+  output_unit_id: number
+  output_unit_abbreviation: string
+  default_yield_pct: number
+  is_byproduct: number
+  sort_order: number
+}
+
 export interface BatchWithRule {
   id: number
   rule_name: string
@@ -448,7 +534,26 @@ export interface BatchWithRule {
   created_at: string
 }
 
+export interface AdHocBatchOutput {
+  outputItemId: number
+  outputVariantId: number | null
+  outputUnitId: number
+  yieldPct: number
+  actualQty: number
+}
+
+export interface AdHocBatchInput {
+  inputItemId: number
+  inputVariantId: number | null
+  inputUnitId: number
+  inputQty: number
+  outputs: AdHocBatchOutput[]
+  notes?: string
+  operatorId: number
+}
+
 export interface CreateBillInput {
+  businessId: number
   billType: 'sale' | 'processing'
   customerId: number | null
   lines: BillLineInput[]

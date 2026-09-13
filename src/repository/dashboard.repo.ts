@@ -20,8 +20,9 @@ export interface DashboardData {
   weekly_sales: WeeklySalesDay[]
 }
 
-export function getDashboardData(db: Database.Database): DashboardData {
-  const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+export function getDashboardData(db: Database.Database, businessId?: number): DashboardData {
+  const today = new Date().toISOString().slice(0, 10)
+  const bizFilter = businessId ? `AND business_id = ${businessId}` : ''
 
   const todayRow = db.prepare(
     `SELECT
@@ -31,33 +32,31 @@ export function getDashboardData(db: Database.Database): DashboardData {
        COALESCE(SUM(due_amount), 0)    as new_udharo
      FROM bills
      WHERE status = 'active'
-       AND DATE(created_at) = ?`
+       AND DATE(created_at) = ? ${bizFilter}`
   ).get(today) as TodaySummary
 
   const outstandingRow = db.prepare(
-    `SELECT COALESCE(SUM(due_amount), 0) as total FROM bills WHERE status = 'active'`
+    `SELECT COALESCE(SUM(due_amount), 0) as total
+     FROM bills WHERE status = 'active' ${bizFilter}`
   ).get() as { total: number }
 
   const stockRow = db.prepare(
-    `SELECT COUNT(DISTINCT item_id) as cnt
-     FROM inventory_transactions`
+    `SELECT COUNT(DISTINCT item_id) as cnt FROM inventory_transactions`
   ).get() as { cnt: number }
 
   const batchRow = db.prepare(
     `SELECT COUNT(*) as cnt FROM processing_batches WHERE DATE(created_at) = ?`
   ).get(today) as { cnt: number }
 
-  // Build last 7 days array, filling zeros for days with no sales
   const weeklySales = db.prepare(
     `SELECT DATE(created_at) as date, COALESCE(SUM(grand_total), 0) as total
      FROM bills
      WHERE status = 'active'
-       AND DATE(created_at) >= DATE('now', '-6 days')
+       AND DATE(created_at) >= DATE('now', '-6 days') ${bizFilter}
      GROUP BY DATE(created_at)
      ORDER BY date ASC`
   ).all() as WeeklySalesDay[]
 
-  // Ensure all 7 days are present
   const salesMap = new Map(weeklySales.map(r => [r.date, r.total]))
   const weekly_sales: WeeklySalesDay[] = Array.from({ length: 7 }, (_, i) => {
     const d = new Date()
@@ -96,15 +95,17 @@ export interface SalesReport {
 export function getSalesReport(
   db: Database.Database,
   fromDate: string,
-  toDate: string
+  toDate: string,
+  businessId?: number
 ): SalesReport {
+  const bizFilter = businessId ? `AND b.business_id = ${businessId}` : ''
   const lines = db.prepare(
     `SELECT b.bill_number, b.created_at, c.name as customer_name,
        b.grand_total, b.paid_amount, b.due_amount, b.status
      FROM bills b
      LEFT JOIN customers c ON c.id = b.customer_id
      WHERE b.status = 'active'
-       AND DATE(b.created_at) BETWEEN ? AND ?
+       AND DATE(b.created_at) BETWEEN ? AND ? ${bizFilter}
      ORDER BY b.created_at DESC`
   ).all(fromDate, toDate) as SalesReportLine[]
 
@@ -128,8 +129,10 @@ export interface ItemSalesLine {
 export function getItemSalesReport(
   db: Database.Database,
   fromDate: string,
-  toDate: string
+  toDate: string,
+  businessId?: number
 ): ItemSalesLine[] {
+  const bizFilter = businessId ? `AND b.business_id = ${businessId}` : ''
   return db.prepare(
     `SELECT i.name as item_name, v.name as variant_name, u.abbreviation as unit_abbreviation,
        SUM(bl.qty)        as total_qty,
@@ -140,7 +143,7 @@ export function getItemSalesReport(
      LEFT JOIN variants v ON v.id = bl.variant_id
      JOIN units u ON u.id = bl.unit_id
      WHERE b.status = 'active'
-       AND DATE(b.created_at) BETWEEN ? AND ?
+       AND DATE(b.created_at) BETWEEN ? AND ? ${bizFilter}
      GROUP BY bl.item_id, bl.variant_id, bl.unit_id
      ORDER BY total_revenue DESC`
   ).all(fromDate, toDate) as ItemSalesLine[]

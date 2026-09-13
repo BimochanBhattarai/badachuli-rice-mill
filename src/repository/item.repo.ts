@@ -55,13 +55,16 @@ export function getItemById(db: Database.Database, id: number): ItemWithUnit | u
 export function searchItems(
   db: Database.Database,
   query: string,
-  filter?: { sellable?: boolean; buyable?: boolean; processable?: boolean }
+  filter?: { sellable?: boolean; buyable?: boolean; processable?: boolean; stockable?: boolean }
 ): ItemWithUnit[] {
   const pattern = `%${query}%`
   const conditions: string[] = ['i.is_active = 1', 'i.name LIKE ?']
-  if (filter?.sellable) conditions.push('i.is_sellable = 1')
-  if (filter?.buyable) conditions.push('i.is_buyable = 1')
-  if (filter?.processable) conditions.push('i.is_processable = 1')
+  if (filter?.stockable) conditions.push('(i.is_buyable = 1 OR i.is_sellable = 1)')
+  else {
+    if (filter?.sellable)    conditions.push('i.is_sellable = 1')
+    if (filter?.buyable)     conditions.push('i.is_buyable = 1')
+    if (filter?.processable) conditions.push('i.is_processable = 1')
+  }
   const where = conditions.join(' AND ')
   return db
     .prepare(

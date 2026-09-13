@@ -1,0 +1,10 @@
+services:
+  sqlite-web:
+    image: coleifer/sqlite-web
+    container_name: badachuli-sqlite-web
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./dev.db:/data/dev.db
+    environment:
+      SQLITE_DATABASE: dev.db

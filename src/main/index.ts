@@ -1,20 +1,27 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, shell, nativeImage } from 'electron'
 import { join } from 'path'
 import { openDatabase } from './db'
 import { registerIpcHandlers } from './ipc'
+import { startEveningScheduler } from './backup'
 
+app.setName('Badachuli Rice Mill')
 app.disableHardwareAcceleration()
 
 let mainWindow: BrowserWindow | null = null
 
 function createWindow() {
+  const iconPath = app.isPackaged
+    ? join(__dirname, '../../resources/icon.png')
+    : join(__dirname, '../../resources/icon.png')
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 1024,
     minHeight: 720,
+    icon: iconPath,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'), // compiled by electron-vite from src/preload/index.ts
+      preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false
@@ -40,8 +47,15 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // Set dock icon in dev mode (packaged builds use the bundle icon automatically)
+  if (!app.isPackaged && process.platform === 'darwin') {
+    const iconPath = join(__dirname, '../../resources/icon.png')
+    app.dock.setIcon(nativeImage.createFromPath(iconPath))
+  }
+
   const db = openDatabase()
   registerIpcHandlers(db)
+  startEveningScheduler()
   createWindow()
 
   app.on('activate', () => {

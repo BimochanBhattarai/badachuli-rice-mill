@@ -2,13 +2,14 @@ import { type ElementType } from 'react'
 import {
   LayoutDashboard, ReceiptText, ClipboardList, Users, PackagePlus,
   Truck, Cpu, BarChart3, Package, Tag, Boxes, Ruler,
-  Settings, LogOut, User,
+  Settings, LogOut, User, Cog, BookOpen,
 } from 'lucide-react'
 import type { AuthUser } from '@shared/types'
+import { useLanguage, type Lang } from '../i18n'
 
-type NavPage =
-  | 'dashboard' | 'billing' | 'bills' | 'customers'
-  | 'stockin' | 'suppliers' | 'processing'
+export type NavPage =
+  | 'dashboard' | 'billing' | 'bills' | 'customers' | 'ledger'
+  | 'stockin' | 'suppliers' | 'mill-processing'
   | 'reports' | 'items' | 'prices' | 'stock' | 'units' | 'settings'
 
 interface Props {
@@ -18,59 +19,56 @@ interface Props {
   onLogout: () => void
 }
 
-interface NavItem {
-  id: NavPage
-  label: string
-  icon: ElementType
-}
-
-interface NavSection {
-  label: string
-  items: NavItem[]
-}
+interface NavItem { id: NavPage; labelKey: string; icon: ElementType }
+interface NavSection { labelKey: string; items: NavItem[] }
 
 const SECTIONS: NavSection[] = [
   {
-    label: '',
+    labelKey: '',
+    items: [{ id: 'dashboard', labelKey: 'nav.dashboard', icon: LayoutDashboard }],
+  },
+  {
+    labelKey: 'section.sales',
     items: [
-      { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { id: 'billing',   labelKey: 'nav.new_bill',   icon: ReceiptText },
+      { id: 'bills',     labelKey: 'nav.bills',       icon: ClipboardList },
+      { id: 'customers', labelKey: 'nav.customers',   icon: Users },
+      { id: 'ledger',    labelKey: 'nav.ledger',      icon: BookOpen },
     ],
   },
   {
-    label: 'Sales',
+    labelKey: 'section.inventory',
     items: [
-      { id: 'billing',   label: 'New Bill',   icon: ReceiptText },
-      { id: 'bills',     label: 'Bills',       icon: ClipboardList },
-      { id: 'customers', label: 'Customers',   icon: Users },
+      { id: 'stockin',         labelKey: 'nav.stock_in',        icon: PackagePlus },
+      { id: 'stock',           labelKey: 'nav.stock',           icon: Boxes },
+      { id: 'suppliers',       labelKey: 'nav.suppliers',       icon: Truck },
+      { id: 'mill-processing', labelKey: 'nav.mill_processing', icon: Cpu },
     ],
   },
   {
-    label: 'Inventory',
+    labelKey: 'section.catalog',
     items: [
-      { id: 'stockin',    label: 'Stock-In',    icon: PackagePlus },
-      { id: 'stock',      label: 'Stock',        icon: Boxes },
-      { id: 'suppliers',  label: 'Suppliers',    icon: Truck },
-      { id: 'processing', label: 'Processing',   icon: Cpu },
+      { id: 'items',  labelKey: 'nav.items',  icon: Package },
+      { id: 'prices', labelKey: 'nav.prices', icon: Tag },
+      { id: 'units',  labelKey: 'nav.units',  icon: Ruler },
     ],
   },
   {
-    label: 'Catalog',
+    labelKey: 'section.system',
     items: [
-      { id: 'items',  label: 'Items',  icon: Package },
-      { id: 'prices', label: 'Prices', icon: Tag },
-      { id: 'units',  label: 'Units',  icon: Ruler },
-    ],
-  },
-  {
-    label: 'System',
-    items: [
-      { id: 'reports',  label: 'Reports',  icon: BarChart3 },
-      { id: 'settings', label: 'Settings', icon: Settings },
+      { id: 'reports',  labelKey: 'nav.reports',  icon: BarChart3 },
+      { id: 'settings', labelKey: 'nav.settings', icon: Settings },
     ],
   },
 ]
 
 export default function Sidebar({ page, setPage, currentUser, onLogout }: Props) {
+  const { t, lang, setLang } = useLanguage()
+
+  function toggleLang() {
+    setLang(lang === 'en' ? 'ne' : 'en' as Lang)
+  }
+
   return (
     <aside className="sidebar">
       {/* Brand */}
@@ -82,9 +80,9 @@ export default function Sidebar({ page, setPage, currentUser, onLogout }: Props)
       {/* Navigation */}
       <nav className="sidebar-nav">
         {SECTIONS.map((section) => (
-          <div key={section.label || '__top__'}>
-            {section.label && (
-              <div className="sidebar-section-label">{section.label}</div>
+          <div key={section.labelKey || '__top__'}>
+            {section.labelKey && (
+              <div className="sidebar-section-label">{t(section.labelKey)}</div>
             )}
             {section.items.map((item) => {
               const Icon = item.icon
@@ -96,7 +94,7 @@ export default function Sidebar({ page, setPage, currentUser, onLogout }: Props)
                   onClick={() => setPage(item.id)}
                 >
                   <Icon className="sidebar-icon" />
-                  {item.label}
+                  {t(item.labelKey)}
                 </button>
               )
             })}
@@ -106,6 +104,12 @@ export default function Sidebar({ page, setPage, currentUser, onLogout }: Props)
 
       {/* Footer */}
       <div className="sidebar-footer">
+        {/* Language toggle */}
+        <button className="sidebar-lang-toggle" onClick={toggleLang} title={t('common.language')}>
+          <Cog size={12} />
+          {lang === 'en' ? 'EN → नेपाली' : 'NE → English'}
+        </button>
+
         <div className="sidebar-user">
           <User size={14} className="text-orange-500" />
           <div>
@@ -115,7 +119,7 @@ export default function Sidebar({ page, setPage, currentUser, onLogout }: Props)
         </div>
         <button className="sidebar-logout" onClick={onLogout}>
           <LogOut size={13} />
-          Lock Session
+          {t('common.lock_session')}
         </button>
       </div>
     </aside>

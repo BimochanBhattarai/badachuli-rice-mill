@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { UnitRow } from '../../../shared/types/api'
+import { useLanguage } from '../../i18n'
 
 interface FormState {
   name: string
@@ -10,6 +11,7 @@ interface FormState {
 const EMPTY_FORM: FormState = { name: '', abbreviation: '', baseFactor: '1' }
 
 export default function UnitsPage() {
+  const { t } = useLanguage()
   const [units, setUnits] = useState<UnitRow[]>([])
   const [editingId, setEditingId] = useState<number | null>(null)
   const [showForm, setShowForm] = useState(false)
@@ -92,18 +94,18 @@ export default function UnitsPage() {
   return (
     <div className="catalog-page">
       <div className="catalog-header">
-        <h2>Units of Measure</h2>
-        <button className="btn-primary" onClick={openCreate}>+ Add Unit</button>
+        <h2>{t('units.title')}</h2>
+        <button className="btn-primary" onClick={openCreate}>{t('units.add')}</button>
       </div>
 
       {showForm && (
         <div className="inline-form">
-          <h3>{editingId !== null ? 'Edit Unit' : 'New Unit'}</h3>
+          <h3>{editingId !== null ? t('units.edit') : t('units.new')}</h3>
           {error && <p className="form-error">{error}</p>}
           <form onSubmit={submit}>
             <div className="form-row">
               <label>
-                Name
+                {t('common.name')}
                 <input
                   type="text"
                   value={form.name}
@@ -114,7 +116,7 @@ export default function UnitsPage() {
                 />
               </label>
               <label>
-                Abbreviation
+                {t('units.abbr')}
                 <input
                   type="text"
                   value={form.abbreviation}
@@ -124,7 +126,7 @@ export default function UnitsPage() {
                 />
               </label>
               <label>
-                Base Factor
+                {t('units.base_factor')}
                 <input
                   type="number"
                   step="any"
@@ -137,9 +139,9 @@ export default function UnitsPage() {
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary" disabled={loading}>
-                {loading ? 'Saving…' : editingId !== null ? 'Update' : 'Create'}
+                {loading ? t('common.saving') : editingId !== null ? t('common.update') : t('common.create')}
               </button>
-              <button type="button" className="btn-ghost" onClick={cancel}>Cancel</button>
+              <button type="button" className="btn-ghost" onClick={cancel}>{t('common.cancel')}</button>
             </div>
           </form>
         </div>
@@ -148,16 +150,16 @@ export default function UnitsPage() {
       <table className="data-table">
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Abbr</th>
-            <th>Base Factor</th>
-            <th>Default</th>
+            <th>{t('common.name')}</th>
+            <th>{t('units.abbr')}</th>
+            <th>{t('units.base_factor')}</th>
+            <th>{t('units.default_label')}</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
           {units.length === 0 && (
-            <tr><td colSpan={5} className="empty-state">No units defined</td></tr>
+            <tr><td colSpan={5} className="empty-state">{t('units.none')}</td></tr>
           )}
           {units.map(u => (
             <tr key={u.id}>
@@ -166,18 +168,18 @@ export default function UnitsPage() {
               <td>{u.base_factor}</td>
               <td>
                 {u.is_default
-                  ? <span className="badge-default">Default</span>
+                  ? <span className="badge-default">{t('units.default_label')}</span>
                   : (
                     <button className="btn-ghost btn-sm" onClick={() => handleSetDefault(u.id)}>
-                      Set default
+                      {t('units.set_default')}
                     </button>
                   )
                 }
               </td>
               <td className="row-actions">
-                <button className="btn-ghost btn-sm" onClick={() => openEdit(u)}>Edit</button>
+                <button className="btn-ghost btn-sm" onClick={() => openEdit(u)}>{t('common.edit')}</button>
                 {!u.is_default && (
-                  <button className="btn-danger btn-sm" onClick={() => handleDelete(u.id)}>Delete</button>
+                  <button className="btn-danger btn-sm" onClick={() => handleDelete(u.id)}>{t('common.delete')}</button>
                 )}
               </td>
             </tr>

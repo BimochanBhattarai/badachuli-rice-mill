@@ -21,3 +21,9 @@ Thumbs.db
 
 # electron-builder
 release/
+
+# Loose image pastes (icons live in resources/)
+image.png
+
+# TypeScript incremental build info
+tsconfig.node.tsbuildinfo

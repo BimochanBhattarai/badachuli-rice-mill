@@ -1,18 +1,31 @@
-import argon2 from 'argon2'
+import { scrypt, randomBytes, timingSafeEqual } from 'crypto'
+import { promisify } from 'util'
 
-const ARGON2_OPTIONS: argon2.Options = {
-  type: argon2.argon2id,
-  memoryCost: 65536, // 64 MB — tuned for 4 GB target hardware
-  timeCost: 3,
-  parallelism: 1
-}
+const scryptAsync = promisify(scrypt)
+
+const PARAMS = { N: 16384, r: 8, p: 1, keylen: 64 }
 
 export async function hashPin(pin: string): Promise<string> {
-  return argon2.hash(pin, ARGON2_OPTIONS)
+  const salt = randomBytes(32)
+  const hash = (await scryptAsync(pin, salt, PARAMS.keylen, {
+    N: PARAMS.N,
+    r: PARAMS.r,
+    p: PARAMS.p
+  })) as Buffer
+  return `scrypt$${salt.toString('base64')}$${hash.toString('base64')}`
 }
 
-export async function verifyPin(hash: string, pin: string): Promise<boolean> {
-  return argon2.verify(hash, pin)
+export async function verifyPin(storedHash: string, pin: string): Promise<boolean> {
+  const parts = storedHash.split('$')
+  if (parts.length !== 3 || parts[0] !== 'scrypt') return false
+  const salt = Buffer.from(parts[1], 'base64')
+  const expected = Buffer.from(parts[2], 'base64')
+  const derived = (await scryptAsync(pin, salt, PARAMS.keylen, {
+    N: PARAMS.N,
+    r: PARAMS.r,
+    p: PARAMS.p
+  })) as Buffer
+  return timingSafeEqual(derived, expected)
 }
 
 export function validatePin(pin: string): string | null {

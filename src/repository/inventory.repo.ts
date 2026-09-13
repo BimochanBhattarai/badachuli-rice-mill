@@ -43,6 +43,7 @@ export function getAllStockLevels(db: Database.Database): StockLevel[] {
        LEFT JOIN variants v ON v.id = it.variant_id
        JOIN  units u ON u.id = it.unit_id
        WHERE i.is_active = 1
+         AND (i.is_buyable = 1 OR i.is_sellable = 1)
        GROUP BY it.item_id, it.variant_id, it.unit_id
        ORDER BY i.name, v.name`
     )
@@ -69,6 +70,31 @@ export function getItemStockLevels(db: Database.Database, itemId: number): Stock
        GROUP BY it.item_id, it.variant_id, it.unit_id`
     )
     .all(itemId) as StockLevel[]
+}
+
+export function adjustStock(
+  db: Database.Database,
+  itemId: number,
+  variantId: number | null,
+  unitId: number,
+  newQty: number,
+  operatorId: number,
+  notes?: string
+): void {
+  const row = db.prepare(
+    `SELECT COALESCE(SUM(qty_delta), 0) AS balance
+     FROM inventory_transactions
+     WHERE item_id = ? AND variant_id IS ? AND unit_id = ?`
+  ).get(itemId, variantId, unitId) as { balance: number }
+
+  const delta = newQty - (row.balance ?? 0)
+  if (delta === 0) return
+
+  const item = db.prepare('SELECT is_sellable FROM items WHERE id = ?').get(itemId) as
+    { is_sellable: number } | undefined
+  const category = item?.is_sellable ? 'finished' : 'raw_material'
+
+  addInventoryTransaction(db, itemId, variantId, unitId, delta, category, 'adjustment', operatorId, notes)
 }
 
 export function addInventoryTransaction(

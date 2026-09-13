@@ -7,22 +7,28 @@ import {
   getBillLines,
   getNextBillNumber,
   addPayment,
+  getPaymentsByBillId,
+  cancelBill,
+  getCustomerStatement,
 } from '../../repository/bill.repo'
 import type { IpcResult } from '../../shared/types/api'
-import type { BillWithCustomer, BillLineWithDetail, CreateBillInput } from '../../repository/bill.repo'
+import type {
+  BillWithCustomer, BillLineWithDetail, CreateBillInput,
+  PaymentRow, CustomerStatementEntry,
+} from '../../repository/bill.repo'
 
 export function registerBillHandlers(db: Database.Database): void {
-  ipcMain.handle('bills:getNextNumber', (): IpcResult<{ billNumber: string }> => {
+  ipcMain.handle('bills:getNextNumber', (_e, businessId: number): IpcResult<{ billNumber: string }> => {
     try {
-      return { ok: true, data: { billNumber: getNextBillNumber(db) } }
+      return { ok: true, data: { billNumber: getNextBillNumber(db, businessId) } }
     } catch (e) {
       return { ok: false, error: String(e) }
     }
   })
 
-  ipcMain.handle('bills:getAll', (_e, limit?: number): IpcResult<BillWithCustomer[]> => {
+  ipcMain.handle('bills:getAll', (_e, limit?: number, businessId?: number): IpcResult<BillWithCustomer[]> => {
     try {
-      return { ok: true, data: getBills(db, limit) }
+      return { ok: true, data: getBills(db, limit, businessId) }
     } catch (e) {
       return { ok: false, error: String(e) }
     }
@@ -66,6 +72,38 @@ export function registerBillHandlers(db: Database.Database): void {
         if (!input.operatorId) return { ok: false, error: 'Operator is required' }
         const result = createBill(db, input)
         return { ok: true, data: result }
+      } catch (e) {
+        return { ok: false, error: String(e) }
+      }
+    }
+  )
+
+  ipcMain.handle('bills:getPayments', (_e, billId: number): IpcResult<PaymentRow[]> => {
+    try {
+      return { ok: true, data: getPaymentsByBillId(db, billId) }
+    } catch (e) {
+      return { ok: false, error: String(e) }
+    }
+  })
+
+  ipcMain.handle(
+    'bills:cancel',
+    (_e, billId: number, reason: string, operatorId: number): IpcResult => {
+      try {
+        if (!reason?.trim()) return { ok: false, error: 'Cancellation reason is required' }
+        cancelBill(db, billId, reason.trim(), operatorId)
+        return { ok: true }
+      } catch (e) {
+        return { ok: false, error: String(e) }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'bills:getCustomerStatement',
+    (_e, customerId: number, businessId?: number): IpcResult<CustomerStatementEntry[]> => {
+      try {
+        return { ok: true, data: getCustomerStatement(db, customerId, businessId) }
       } catch (e) {
         return { ok: false, error: String(e) }
       }
