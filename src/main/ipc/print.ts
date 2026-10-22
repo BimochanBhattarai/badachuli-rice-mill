@@ -5,6 +5,8 @@ import { pathToFileURL } from 'url'
 import fs from 'fs'
 import net from 'net'
 import type { BillWithCustomer, BillLineWithDetail, BusinessRow } from '../../shared/types/api'
+import { TOKEN_DIGIT_FONT_CSS, TOKEN_DIGIT_FONT_FAMILY } from './token-font'
+import { buildKhataRows, khataFooter, CREDIT_SUFFIX } from '@shared/khata'
 
 // ── Types ─────────────────────────────────────────────────────────────────
 interface PngImage {
@@ -94,21 +96,20 @@ function esc(s: string): string {
     .replace(/"/g, '&quot;')
 }
 
-// Body is 288px CSS. With webPreferences.scaleFactor=2 the offscreen renderer
-// produces 576 physical pixels — exactly the ZKP8016's 576-dot printable width.
-// pngToEscPos receives a 576px-wide PNG and targets 576 dots → scale = 1.0
-// (no upscaling or downscaling, perfect 1:1 mapping, no quality loss).
 const RECEIPT_CSS = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-    font-size: 13px; line-height: 1.5;
-    width: 288px; color: #000; background: #fff; padding: 8mm 3mm 0;
+    font-size: 13px; line-height: 1.4;
+    width: 288px; color: #000; background: #fff;
   }
-  .center { text-align: center; margin-bottom: 3px; }
+  .header-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; margin-bottom: 2px; }
+  .header-type { font-weight: 700; }
+  .center { text-align: center; margin-bottom: 2px; }
   .mill-name { font-size: 17px; font-weight: 700; letter-spacing: 0.02em; }
   .detail { font-size: 12px; margin-top: 1px; }
-  .divider { border: none; border-top: 1.5px dashed #333; margin: 6px 0; }
+  .divider { border: none; border-top: 1.5px dashed #333; margin: 4px 0; }
+  .bill-meta { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; }
   .row { display: flex; justify-content: space-between; padding: 2px 0; }
   .row-total {
     font-weight: 700; font-size: 14px;
@@ -125,7 +126,8 @@ const RECEIPT_CSS = `
   .col-rate { width: 65px; text-align: right; flex-shrink: 0; }
   .col-total { width: 72px; text-align: right; flex-shrink: 0; font-weight: 500; }
   .line-discount { font-size: 11px; color: #444; margin-top: -2px; margin-bottom: 2px; padding-left: 2px; }
-  .footer { text-align: center; font-size: 12px; padding: 3px 0 5px; }
+  .section-label { font-size: 11px; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.04em; margin: 4px 0 2px; border-bottom: 1px dashed #aaa; padding-bottom: 2px; }
+  .footer { text-align: center; font-size: 12px; padding: 3px 0 4px; }
 `
 
 function buildReceiptHtml(
@@ -133,9 +135,8 @@ function buildReceiptHtml(
   lines: BillLineWithDetail[],
   business: BusinessRow,
 ): string {
-  const hasDue = bill.due_amount > 0.005
 
-  const linesHtml = lines.map(l => {
+  function renderLine(l: BillLineWithDetail): string {
     const label = l.variant_name && l.variant_name !== l.item_name
       ? `${l.item_name} (${l.variant_name})`
       : l.item_name
@@ -148,33 +149,49 @@ function buildReceiptHtml(
         <span class="col-rate">${fmtAmtNe(l.rate_snapshot)}</span>
         <span class="col-total">${fmtAmtNe(l.line_total)}</span>
       </div>${discRow}`
-  }).join('\n')
+  }
 
-  const discountRow = bill.discount_amount > 0
-    ? `<div class="row"><span>छूट</span><span>- ${fmtAmtNe(bill.discount_amount)}</span></div>`
-    : ''
-  const dueRow = hasDue
-    ? `<div class="row row-due"><span>बाँकी (उधारो)</span><span>${fmtAmtNe(bill.due_amount)}</span></div>`
-    : ''
-  const customerRow = bill.customer_name
-    ? `<div class="row"><span>ग्राहक</span><span>${esc(bill.customer_name)}</span></div>`
-    : ''
+  const saleLines = lines.filter(l => l.line_type !== 'processing')
+  const procLines = lines.filter(l => l.line_type === 'processing')
+  const isMixed   = saleLines.length > 0 && procLines.length > 0
+
+  const linesHtml = isMixed
+    ? `<div class="section-label">बिक्री</div>${saleLines.map(renderLine).join('\n')}<div class="section-label">प्रशोधन</div>${procLines.map(renderLine).join('\n')}`
+    : lines.map(renderLine).join('\n')
+
+  // Same source of truth as the on-screen receipt — see @shared/khata.
+  const khataRows = buildKhataRows(bill).map(r => {
+    const cls = r.style === 'grand' ? 'row row-due'
+              : r.style === 'total' ? 'row row-total'
+              : 'row'
+    const sign = r.style === 'negate' ? '- ' : ''
+    const suffix = r.credit ? CREDIT_SUFFIX : ''
+    return `<div class="${cls}"><span>${r.label}</span><span>${sign}${fmtAmtNe(r.value)}${suffix}</span></div>`
+  }).join('\n  ')
+  const customerRow = [
+    bill.customer_name    ? `<div class="detail" style="padding:1px 0">श्री ${esc(bill.customer_name)}</div>` : '',
+    bill.customer_pan     ? `<div class="detail">प्यान नं : ${esc(bill.customer_pan)}</div>` : '',
+    bill.customer_address ? `<div class="detail">ठेगाना: ${esc(bill.customer_address)}</div>` : '',
+  ].join('')
   const addressLine = business.address ? `<div class="detail">${esc(business.address)}</div>` : ''
   const phoneLine   = business.phone   ? `<div class="detail">फोन: ${esc(business.phone)}</div>` : ''
-  const panLine     = business.pan_number ? `<div class="detail">PAN: ${esc(business.pan_number)}</div>` : ''
+  const panSpan     = business.pan_number ? `<span>प्यान नं : ${esc(business.pan_number)}</span>` : `<span></span>`
+  const typeLabel = bill.bill_kind === 'mixed' ? 'बिक्री / प्रशोधन' : bill.bill_kind === 'processing' ? 'प्रशोधन' : 'बिक्री'
 
   return `<!DOCTYPE html>
 <html lang="ne">
 <head><meta charset="utf-8"><style>${RECEIPT_CSS}</style></head>
 <body onload="document.fonts.ready.then(function(){requestAnimationFrame(function(){requestAnimationFrame(function(){document.body.setAttribute('data-print-ready','1')})})})">
+  <div class="header-top">${panSpan}<span class="header-type">${typeLabel}</span></div>
   <div class="center">
     <div class="mill-name">${esc(business.name)}</div>
-    ${addressLine}${phoneLine}${panLine}
+    ${addressLine}${phoneLine}
   </div>
   <div class="divider"></div>
-  <div class="row"><span>बिल नं.</span><span>${esc(bill.bill_number)}</span></div>
-  <div class="row"><span>मिति</span><span>${fmtDateBS(bill.created_at)}</span></div>
-  <div class="row"><span>प्रकार</span><span>${bill.bill_type === 'processing' ? 'प्रशोधन' : 'बिक्री'}</span></div>
+  <div class="bill-meta">
+    <span>बिल नं : <strong>${esc(bill.bill_number)}</strong></span>
+    <span>मिति : ${fmtDateBS(bill.created_at)}</span>
+  </div>
   ${customerRow}
   <div class="divider"></div>
   <div class="line-header">
@@ -184,14 +201,52 @@ function buildReceiptHtml(
     <span class="col-total">जम्मा</span>
   </div>
   ${linesHtml}
+  ${khataRows}
   <div class="divider"></div>
-  <div class="row"><span>उप-जम्मा</span><span>${fmtAmtNe(bill.subtotal)}</span></div>
-  ${discountRow}
-  <div class="row row-total"><span>ग्राण्ड जम्मा</span><span>${fmtAmtNe(bill.grand_total)}</span></div>
-  <div class="row"><span>तिरेको</span><span>${fmtAmtNe(bill.paid_amount)}</span></div>
-  ${dueRow}
+  <div class="footer">${khataFooter(bill)}</div>
+</body>
+</html>`
+}
+
+// ── Token slip generation ─────────────────────────────────────────────────
+const TOKEN_CSS = `
+  ${TOKEN_DIGIT_FONT_CSS}
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    width: 288px; color: #000; background: #fff; text-align: center; line-height: 1;
+  }
+  .center { margin-bottom: 1px; }
+  .mill-name { font-size: 16px; font-weight: 400; letter-spacing: 0.02em; }
+  .detail { font-size: 11px; margin-top: 1px; }
+  .divider { border: none; border-top: 1.5px dashed #333; margin: 2px 0; }
+  .token-date { font-size: 16px; font-weight: 400; margin: 1px 0 0; }
+  .token-number { font-family: '${TOKEN_DIGIT_FONT_FAMILY}', system-ui, -apple-system, sans-serif; font-size: 64px; font-weight: 400; line-height: 0.92; margin: 0; }
+  .token-item { font-size: 15px; font-weight: 400; margin: 1px 0 0; }
+  .footer { font-size: 12px; font-weight: 400; padding: 1px 0 2px; }
+`
+
+function buildTokenHtml(
+  business: BusinessRow,
+  tokenNumber: number,
+  itemName: string,
+  createdAt: string,
+): string {
+  const addressLine = business.address ? `<div class="detail">${esc(business.address)}</div>` : ''
+  return `<!DOCTYPE html>
+<html lang="ne">
+<head><meta charset="utf-8"><style>${TOKEN_CSS}</style></head>
+<body onload="document.fonts.ready.then(function(){requestAnimationFrame(function(){requestAnimationFrame(function(){document.body.setAttribute('data-print-ready','1')})})})">
+  <div class="center">
+    <div class="mill-name">${esc(business.name)}</div>
+    ${addressLine}
+  </div>
   <div class="divider"></div>
-  <div class="footer">${hasDue ? 'धन्यवाद — माथि उल्लेखित रकम बाँकी छ' : 'धन्यवाद!'}</div>
+  <div class="token-date">${fmtDateBS(createdAt)}</div>
+  <div class="token-number">${toNepaliNum(tokenNumber)}</div>
+  <div class="token-item">${esc(itemName)}</div>
+  <div class="divider"></div>
+  <div class="footer">धन्यवाद!</div>
 </body>
 </html>`
 }
@@ -280,46 +335,82 @@ async function cupsRawFallback(escData: Buffer, binPath: string): Promise<void> 
   console.log('[print] CUPS queued:', sent.trim())
 }
 
-// Windows fallback: render the receipt HTML in a hidden window and send to
-// the default Windows printer via the OS print spooler. This path is used
-// when no TCP/IP printer address is configured.
-async function windowsPrint(htmlPath: string): Promise<void> {
-  const { BrowserWindow } = require('electron') as typeof import('electron')
-  const win = new BrowserWindow({
-    width: 400,
-    height: 1200,
-    show: false,
-    frame: false,
-    skipTaskbar: true,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-  })
+// Windows raw ESC/POS printing via Win32 WritePrinter API.
+//
+// Sends the pre-rendered bitmap directly to the printer's RAW queue, bypassing
+// the GDI print driver entirely. This eliminates all driver-added margins and
+// produces the same clean edge-to-edge output as the TCP path on other platforms.
+//
+// The PowerShell snippet uses Add-Type to P/Invoke winspool.drv so no external
+// packages are required — it works on any Windows machine with PowerShell 5+.
+async function windowsRawPrint(escData: Buffer): Promise<void> {
+  const tmp = app.getPath('temp')
+  const ts  = Date.now()
+  const binPath = path.join(tmp, `receipt-${ts}.bin`)
+  const psPath  = path.join(tmp, `rawprint-${ts}.ps1`)
+
+  fs.writeFileSync(binPath, escData)
+
+  // Query the default printer name from Windows
+  const printerName = (await execPromise(
+    'powershell -Command "(Get-WmiObject -Query \\"SELECT * FROM Win32_Printer WHERE Default=True\\").Name"'
+  )).trim()
+
+  if (!printerName) throw new Error('No default printer found. Set "80 Printer Series" as your default printer in Windows Settings.')
+
+  const escaped = binPath.replace(/\\/g, '\\\\')
+  const ps = `
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Ansi)]
+public struct DOCINFO1 {
+  [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
+  [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
+  [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
+}
+public class Winspool {
+  [DllImport("winspool.drv",CharSet=CharSet.Ansi)] public static extern bool OpenPrinter(string n, out IntPtr h, IntPtr p);
+  [DllImport("winspool.drv")] public static extern bool ClosePrinter(IntPtr h);
+  [DllImport("winspool.drv")] public static extern int StartDocPrinter(IntPtr h, int l, [In] ref DOCINFO1 d);
+  [DllImport("winspool.drv")] public static extern bool EndDocPrinter(IntPtr h);
+  [DllImport("winspool.drv")] public static extern bool StartPagePrinter(IntPtr h);
+  [DllImport("winspool.drv")] public static extern bool EndPagePrinter(IntPtr h);
+  [DllImport("winspool.drv")] public static extern bool WritePrinter(IntPtr h, IntPtr b, int n, out int w);
+}
+"@ -Language CSharp
+\$h = [IntPtr]::Zero
+[Winspool]::OpenPrinter("${printerName.replace(/"/g, '`"')}", [ref]\$h, [IntPtr]::Zero) | Out-Null
+\$di = New-Object DOCINFO1
+\$di.pDocName = "Receipt"
+\$di.pOutputFile = \$null
+\$di.pDataType = "RAW"
+[Winspool]::StartDocPrinter(\$h, 1, [ref]\$di) | Out-Null
+[Winspool]::StartPagePrinter(\$h) | Out-Null
+\$bytes = [IO.File]::ReadAllBytes("${escaped}")
+\$gc = [Runtime.InteropServices.GCHandle]::Alloc(\$bytes, [Runtime.InteropServices.GCHandleType]::Pinned)
+\$w = 0
+[Winspool]::WritePrinter(\$h, \$gc.AddrOfPinnedObject(), \$bytes.Length, [ref]\$w) | Out-Null
+\$gc.Free()
+[Winspool]::EndPagePrinter(\$h) | Out-Null
+[Winspool]::EndDocPrinter(\$h) | Out-Null
+[Winspool]::ClosePrinter(\$h) | Out-Null
+`
+
+  fs.writeFileSync(psPath, ps, 'utf8')
   try {
-    await win.loadURL(pathToFileURL(htmlPath).href)
-    await new Promise(r => setTimeout(r, 1200))
-    await new Promise<void>((resolve, reject) => {
-      win.webContents.print({ silent: true, printBackground: false }, (success, errorType) => {
-        if (success) resolve()
-        else reject(new Error(
-          errorType === 'cancelled'
-            ? 'Print cancelled'
-            : `Windows print failed (${errorType ?? 'unknown'}). Configure printer IP in Settings for thermal printing.`
-        ))
-      })
-    })
-    console.log('[print] sent via Windows print spooler')
+    await execPromise(`powershell -ExecutionPolicy Bypass -File "${psPath}"`)
+    console.log('[print] sent via Windows RAW WritePrinter to', printerName)
   } finally {
-    win.destroy()
+    for (const f of [psPath, binPath]) fs.unlink(f, () => {})
   }
 }
 
-// PNG buffer → ESC/POS using GS v 0 raster bit image (1:1 pixel mapping).
+// PNG buffer → ESC/POS using GS v 0 raster bit image.
 //
-// GS v 0 maps each PNG pixel directly to one printer dot — no scaling, no
-// downsampling, no stroke inflation.  This is the only command that gives
-// true 1:1 quality on the ZKP8016.
+// Scales the captured PNG (any width from OS DPI) to exactly targetWidth
+// printer dots. This handles Windows display scaling (e.g. 150% DPI gives
+// 432px instead of 576px) by mapping source pixels proportionally.
 //
 // The ZKP8016 has a firmware bug: its GS v 0 state machine is not cleared by
 // ESC @ between jobs, so the first strip of every subsequent job is consumed
@@ -336,9 +427,13 @@ function pngToEscPos(pngBuffer: Buffer, targetWidth = 576): Buffer {
   const img: PngImage = PNG.sync.read(pngBuffer)
   const { width, height, data } = img
 
+  // Scale X: map targetWidth printer dots → img.width source pixels.
+  // At perfect 2× DPI this is 1:1 (576→576). At 1.5× it's 576→432 (scaleX=0.75).
+  const scaleX = width / targetWidth
+
   // Composite RGBA on white; transparent pixels → white (no ink).
   function bright(srcX: number, srcY: number): number {
-    const sx = Math.min(Math.floor(srcX), width - 1)
+    const sx = Math.min(Math.floor(srcX * scaleX), width - 1)
     const sy = Math.min(Math.floor(srcY), height - 1)
     const i  = (sy * width + sx) * 4
     const a  = (data[i + 3] ?? 255) / 255
@@ -382,6 +477,10 @@ function pngToEscPos(pngBuffer: Buffer, targetWidth = 576): Buffer {
 
   const chunks: Buffer[] = [
     Buffer.from([0x1B, 0x40]),  // ESC @ – reset
+    // One blank strip (50 rows) absorbs the ZKP8016 phantom state so the
+    // business name prints cleanly on every job, even without CSS top padding.
+    Buffer.from([0x1D, 0x76, 0x30, 0x00, xL, xH, STRIP & 0xFF, (STRIP >> 8) & 0xFF]),
+    Buffer.alloc(STRIP * bytesPerRow, 0),
   ]
 
   for (let start = 0; start < rows; start += STRIP) {
@@ -432,34 +531,27 @@ function getPrintWin(): import('electron').BrowserWindow {
   return sharedPrintWin
 }
 
-// ── IPC handlers ──────────────────────────────────────────────────────────
-export function registerPrintHandlers(): void {
+// ── Shared print pipeline ───────────────────────────────────────────────────
+// Renders an HTML document offscreen, captures it to a PNG, converts to ESC/POS
+// and sends it to the thermal printer. Used by every print path (receipt, token)
+// so the offscreen-render/capture/scale quirks live in exactly one place.
+async function printHtmlDocument(html: string, printerIp?: string): Promise<{ ok: boolean; error?: string }> {
+  if (printBusy) return { ok: false, error: 'प्रिन्टर व्यस्त छ, कृपया पर्खनुस्' }
+  printBusy = true
 
-  ipcMain.handle(
-    'print:receipt',
-    async (
-      _event,
-      bill: BillWithCustomer,
-      lines: BillLineWithDetail[],
-      business: BusinessRow,
-      printerIp?: string,
-    ) => {
-      if (printBusy) return { ok: false, error: 'प्रिन्टर व्यस्त छ, कृपया पर्खनुस्' }
-      printBusy = true
+  console.log('[print] start — via:', printerIp ? `TCP ${printerIp}` : 'CUPS')
 
-      console.log('[print] start — via:', printerIp ? `TCP ${printerIp}` : 'CUPS')
+  const ts = Date.now()
+  const tmp = app.getPath('temp')
+  const htmlPath = path.join(tmp, `receipt-${ts}.html`)
+  const binPath  = path.join(tmp, `receipt-${ts}.bin`)
+  const cleanup = () => { for (const f of [htmlPath, binPath]) fs.unlink(f, () => {}) }
 
-      const ts = Date.now()
-      const tmp = app.getPath('temp')
-      const htmlPath = path.join(tmp, `receipt-${ts}.html`)
-      const binPath  = path.join(tmp, `receipt-${ts}.bin`)
-      const cleanup = () => { for (const f of [htmlPath, binPath]) fs.unlink(f, () => {}) }
+  try {
+    // Step 1: Write HTML to temp file
+    fs.writeFileSync(htmlPath, html, 'utf8')
 
-      try {
-        // Step 1: Write receipt HTML to temp file
-        fs.writeFileSync(htmlPath, buildReceiptHtml(bill, lines, business), 'utf8')
-
-        // Step 1b: Send ESC @ to the printer now, before rendering starts.
+    // Step 1b: Send ESC @ to the printer now, before rendering starts.
         // This gives the printer ~600 ms to process the reset while Chromium
         // renders the receipt — belt-and-suspenders alongside the post-job reset
         // embedded at the end of each ESC/POS stream.
@@ -512,21 +604,13 @@ export function registerPrintHandlers(): void {
 
         console.log('[print] captured', sz.width, 'x', sz.height, 'px —', pngBuffer.length, 'bytes')
 
-        // scaleFactor:2 must produce a 576px-wide PNG. If it doesn't, Electron
-        // ignored the hint and we'd be 2× upscaling 288→576 in pngToEscPos,
-        // which turns sharp text into blocky garbled dots.
-        if (sz.width !== 576) {
-          return {
-            ok: false,
-            error: `Capture is ${sz.width}px wide (expected 576). Restart the app and try again.`,
-          }
-        }
-
         if (pngBuffer.length < 3000) {
           return { ok: false, error: 'Capture returned blank image — please try again' }
         }
 
-        // Step 5: PNG → ESC/POS (scale = 1.0: 576 physical px → 576 printer dots)
+        // Step 5: PNG → ESC/POS. pngToEscPos scales from sz.width → 576 printer dots,
+        // so any OS DPI (1.5× gives 432px, 2× gives 576px) maps correctly to the printer.
+        console.log('[print] DPI scale:', (sz.width / 288).toFixed(2), `(${sz.width}px → 576 dots)`)
         const escData = pngToEscPos(pngBuffer, 576)
         console.log('[print] ESC/POS:', escData.length, 'bytes')
 
@@ -535,7 +619,7 @@ export function registerPrintHandlers(): void {
           await sendViaTcp(printerIp.trim(), 9100, escData)
           console.log('[print] sent via TCP to', printerIp.trim())
         } else if (process.platform === 'win32') {
-          await windowsPrint(htmlPath)
+          await windowsRawPrint(escData)
         } else {
           await cupsRawFallback(escData, binPath)
         }
@@ -559,7 +643,32 @@ export function registerPrintHandlers(): void {
         printBusy = false
         // Do NOT close sharedPrintWin — kept alive to avoid GPU surface teardown
       }
-    },
+}
+
+// ── IPC handlers ──────────────────────────────────────────────────────────
+export function registerPrintHandlers(): void {
+
+  ipcMain.handle(
+    'print:receipt',
+    async (
+      _event,
+      bill: BillWithCustomer,
+      lines: BillLineWithDetail[],
+      business: BusinessRow,
+      printerIp?: string,
+    ) => printHtmlDocument(buildReceiptHtml(bill, lines, business), printerIp),
+  )
+
+  ipcMain.handle(
+    'print:token',
+    async (
+      _event,
+      business: BusinessRow,
+      tokenNumber: number,
+      itemName: string,
+      createdAt: string,
+      printerIp?: string,
+    ) => printHtmlDocument(buildTokenHtml(business, tokenNumber, itemName, createdAt), printerIp),
   )
 
   // PDF viewer — opens in Preview for manual print (dev helper)

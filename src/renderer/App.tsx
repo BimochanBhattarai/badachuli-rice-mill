@@ -16,7 +16,9 @@ import MillProcessingPage from './pages/processing/MillProcessingPage'
 import NewBillPage from './pages/billing/NewBillPage'
 import CustomersPage from './pages/billing/CustomersPage'
 import LedgerPage from './pages/billing/LedgerPage'
+import CustomerItemReportPage from './pages/billing/CustomerItemReportPage'
 import BillsPage, { type AmendData } from './pages/billing/BillsPage'
+import ExpensesPage from './pages/expenses/ExpensesPage'
 import Sidebar, { type NavPage } from './components/Sidebar'
 
 type AppState = 'loading' | 'setup' | 'login' | 'app'
@@ -27,10 +29,17 @@ export default function App() {
   const [page, setPage] = useState<NavPage>('dashboard')
   const [amendData, setAmendData] = useState<AmendData | null>(null)
   const [ledgerCustomer, setLedgerCustomer] = useState<CustomerWithBalance | null>(null)
+  const [reportCustomer, setReportCustomer] = useState<CustomerWithBalance | null>(null)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   function goToLedger(customer: CustomerWithBalance) {
     setLedgerCustomer(customer)
     setPage('ledger')
+  }
+
+  function goToCustomerReport(customer: CustomerWithBalance) {
+    setReportCustomer(customer)
+    setPage('customer-report')
   }
 
   useEffect(() => {
@@ -78,12 +87,20 @@ export default function App() {
     <div className="app-shell">
       <Sidebar
         page={page}
-        setPage={p => { if (p !== 'ledger') setLedgerCustomer(null); setPage(p) }}
+        setPage={p => {
+          if (p !== 'ledger' && p !== 'customer-report') {
+            setLedgerCustomer(null)
+            setReportCustomer(null)
+          }
+          setPage(p)
+        }}
         currentUser={currentUser!}
         onLogout={handleLogout}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed(v => !v)}
       />
       <main className="app-main">
-        {page === 'dashboard'       && <DashboardPage onNavigate={setPage} />}
+        {page === 'dashboard'       && <DashboardPage onNavigate={setPage} currentUser={currentUser!} />}
         {page === 'reports'         && <ReportsPage />}
         {page === 'units'           && <UnitsPage />}
         {page === 'settings'        && <SettingsPage currentUser={currentUser!} />}
@@ -96,7 +113,9 @@ export default function App() {
         {page === 'billing'         && <NewBillPage currentUser={currentUser!} amendData={amendData} onAmendComplete={() => setAmendData(null)} />}
         {page === 'bills'           && <BillsPage currentUser={currentUser!} onAmend={data => { setAmendData(data); setPage('billing') }} />}
         {page === 'customers'       && <CustomersPage onViewLedger={goToLedger} />}
-        {page === 'ledger'          && <LedgerPage currentUser={currentUser!} initialCustomer={ledgerCustomer} />}
+        {page === 'ledger'          && <LedgerPage currentUser={currentUser!} initialCustomer={ledgerCustomer} onViewItemReport={goToCustomerReport} />}
+        {page === 'customer-report' && reportCustomer && <CustomerItemReportPage customer={reportCustomer} onBack={() => goToLedger(reportCustomer)} />}
+        {page === 'expenses'        && <ExpensesPage currentUser={currentUser!} />}
       </main>
     </div>
   )

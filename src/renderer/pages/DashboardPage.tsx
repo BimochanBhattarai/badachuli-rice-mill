@@ -5,9 +5,9 @@ import {
 import {
   TrendingUp, Wallet, AlertCircle, Package,
   ReceiptText, PackagePlus, Cpu, BarChart3,
-  RefreshCw, Calendar,
+  RefreshCw, Calendar, Ticket, X, CheckCircle2,
 } from 'lucide-react'
-import type { DashboardData, BusinessRow } from '@shared/types/api'
+import type { DashboardData, BusinessRow, ItemRow, AuthUser } from '@shared/types/api'
 import { useLanguage } from '../i18n'
 
 type NavPage =
@@ -17,17 +17,57 @@ type NavPage =
 
 interface Props {
   onNavigate: (page: NavPage) => void
+  currentUser: AuthUser
 }
 
 const DAY_LABELS_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const DAY_LABELS_NE = ['आइत', 'सोम', 'मंगल', 'बुध', 'बिही', 'शुक्र', 'शनि']
 
-export default function DashboardPage({ onNavigate }: Props) {
+export default function DashboardPage({ onNavigate, currentUser }: Props) {
   const { t, lang, fmtAmt, fmtDate } = useLanguage()
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [businesses, setBusinesses] = useState<BusinessRow[]>([])
   const [businessFilter, setBusinessFilter] = useState<number | null>(null)
+
+  // ── Daily token generation ──────────────────────────────────
+  const [tokenItems, setTokenItems] = useState<ItemRow[]>([])
+  const [tokenBusy, setTokenBusy] = useState(false)
+  const [showPicker, setShowPicker] = useState(false)
+  const [tokenMsg, setTokenMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  useEffect(() => {
+    window.api.items.getAll(true).then(r => {
+      if (r.ok && r.data) setTokenItems(r.data.filter(i => i.enable_token === 1))
+    })
+  }, [])
+
+  function handleGenerateToken() {
+    setTokenMsg(null)
+    if (tokenItems.length === 0) { setTokenMsg({ type: 'error', text: t('token.no_items') }); return }
+    if (tokenItems.length === 1) { void generateAndPrint(tokenItems[0]); return }
+    setShowPicker(true)
+  }
+
+  async function generateAndPrint(item: ItemRow) {
+    setShowPicker(false)
+    const biz = (businessFilter != null ? businesses.find(b => b.id === businessFilter) : businesses[0]) ?? businesses[0]
+    if (!biz) { setTokenMsg({ type: 'error', text: t('token.no_business') }); return }
+    setTokenBusy(true)
+    setTokenMsg(null)
+    try {
+      const res = await window.api.tokens.generate(biz.id, item.id, currentUser.id)
+      if (!res.ok || !res.data) { setTokenMsg({ type: 'error', text: res.error ?? t('token.error') }); return }
+      const printerIp = (await window.api.settings.get('printer_ip') as string | null) || undefined
+      const printRes = await window.api.print.token(biz, res.data.tokenNumber, item.name, res.data.createdAt, printerIp)
+      if (!printRes.ok) { setTokenMsg({ type: 'error', text: printRes.error ?? t('token.error') }); return }
+      setTokenMsg({ type: 'success', text: t('token.success').replace('{n}', String(res.data.tokenNumber)) })
+    } catch (e) {
+      setTokenMsg({ type: 'error', text: e instanceof Error ? e.message : t('token.error') })
+    } finally {
+      setTokenBusy(false)
+    }
+  }
 
   const DAY_LABELS = lang === 'ne' ? DAY_LABELS_NE : DAY_LABELS_EN
 
@@ -87,7 +127,12 @@ export default function DashboardPage({ onNavigate }: Props) {
   }))
 
   const weekTotal = weekly_sales.reduce((sum, d) => sum + d.total, 0)
-  const hasOutstanding = data.total_outstanding > 0
+  // Credit extended today. Under balance-forward a payment is not allocated to any
+  // particular bill, so "of today's bills, how much is still unpaid" has no answer --
+  // credit extended today is the only coherent today-scoped figure, and it is what
+  // this card was computing before (SUM of today's bills' due amounts).
+  const todayOutstanding = data.today.new_udharo
+  const hasOutstanding = todayOutstanding > 0.005
 
   return (
     <div className="flex flex-col gap-6">
@@ -117,6 +162,14 @@ export default function DashboardPage({ onNavigate }: Props) {
             </div>
           )}
           <button
+            onClick={handleGenerateToken}
+            disabled={tokenBusy}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-orange-500 rounded-lg shadow-sm hover:bg-orange-600 hover:shadow-md hover:shadow-orange-200 active:scale-[0.98] transition-all disabled:opacity-60 disabled:cursor-wait"
+          >
+            <Ticket size={16} />
+            {tokenBusy ? t('token.generating') : t('token.generate')}
+          </button>
+          <button
             onClick={() => load()}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-stone-600 border border-stone-200 rounded-lg hover:bg-orange-50 hover:border-orange-300 hover:text-orange-700 transition-colors"
           >
@@ -138,13 +191,17 @@ export default function DashboardPage({ onNavigate }: Props) {
         <StatCard
           label={t('dashboard.collected_today')}
           value={fmtAmt(todayData.total_collected)}
-          sub={t('dashboard.cash_bank_digital')}
+          sub={
+            todayData.debt_collected > 0.005
+              ? `${t('dashboard.incl_debt_collected')} ${fmtAmt(todayData.debt_collected)}`
+              : t('dashboard.cash_bank_digital')
+          }
           icon={Wallet}
           style="green"
         />
         <StatCard
           label={t('dashboard.outstanding')}
-          value={fmtAmt(data.total_outstanding)}
+          value={fmtAmt(todayOutstanding)}
           sub={hasOutstanding ? t('dashboard.pending_udharo') : t('dashboard.all_clear')}
           icon={AlertCircle}
           style={hasOutstanding ? 'red' : 'neutral'}
@@ -221,8 +278,8 @@ export default function DashboardPage({ onNavigate }: Props) {
           <h3 className="text-sm font-bold text-stone-800 mb-4">{t('dashboard.today_glance')}</h3>
           <GlanceRow label={t('dashboard.billed')} value={fmtAmt(todayData.total_billed)} />
           <GlanceRow label={t('dashboard.collected')} value={fmtAmt(todayData.total_collected)} color="text-green-600" />
-          {todayData.new_udharo > 0 && (
-            <GlanceRow label={t('dashboard.new_udharo')} value={fmtAmt(todayData.new_udharo)} color="text-red-500" />
+          {todayData.debt_collected > 0.005 && (
+            <GlanceRow label={t('dashboard.debt_collected')} value={fmtAmt(todayData.debt_collected)} color="text-green-600" small />
           )}
           <div className="border-t border-stone-100 my-3" />
           <GlanceRow label={t('dashboard.bills_today')} value={String(todayData.bill_count)} small />
@@ -249,6 +306,53 @@ export default function DashboardPage({ onNavigate }: Props) {
           <QuickAction label={t('nav.reports')}       icon={BarChart3}   color="bg-stone-700"  hover="hover:shadow-stone-200"  onClick={() => onNavigate('reports')} />
         </div>
       </div>
+
+      {/* ── Token toast ───────────────────────────────────────── */}
+      {tokenMsg && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 max-w-sm">
+          <div className={`flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg text-sm font-semibold ${
+            tokenMsg.type === 'success'
+              ? 'bg-green-600 text-white'
+              : 'bg-red-600 text-white'
+          }`}>
+            {tokenMsg.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+            <span>{tokenMsg.text}</span>
+            <button onClick={() => setTokenMsg(null)} className="ml-1 opacity-80 hover:opacity-100">
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Token item picker ─────────────────────────────────── */}
+      {showPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowPicker(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-stone-800 flex items-center gap-2">
+                <Ticket size={18} className="text-orange-500" />
+                {t('token.select_item')}
+              </h3>
+              <button onClick={() => setShowPicker(false)} className="p-1 text-stone-400 hover:text-stone-700">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex flex-col gap-2">
+              {tokenItems.map(item => (
+                <button
+                  key={item.id}
+                  onClick={() => void generateAndPrint(item)}
+                  disabled={tokenBusy}
+                  className="flex items-center justify-between px-4 py-3 rounded-xl border border-stone-200 bg-stone-50 hover:bg-orange-50 hover:border-orange-300 text-left transition-colors disabled:opacity-60"
+                >
+                  <span className="text-sm font-semibold text-stone-700">{item.name}</span>
+                  <Ticket size={15} className="text-orange-400" />
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

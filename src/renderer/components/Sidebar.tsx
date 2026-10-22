@@ -2,7 +2,7 @@ import { type ElementType } from 'react'
 import {
   LayoutDashboard, ReceiptText, ClipboardList, Users, PackagePlus,
   Truck, Cpu, BarChart3, Package, Tag, Boxes, Ruler,
-  Settings, LogOut, User, Cog, BookOpen,
+  Settings, LogOut, User, Cog, BookOpen, ChevronLeft, ChevronRight, Wallet,
 } from 'lucide-react'
 import type { AuthUser } from '@shared/types'
 import { useLanguage, type Lang } from '../i18n'
@@ -11,12 +11,16 @@ export type NavPage =
   | 'dashboard' | 'billing' | 'bills' | 'customers' | 'ledger'
   | 'stockin' | 'suppliers' | 'mill-processing'
   | 'reports' | 'items' | 'prices' | 'stock' | 'units' | 'settings'
+  | 'customer-report'
+  | 'expenses'
 
 interface Props {
   page: NavPage
   setPage: (p: NavPage) => void
   currentUser: AuthUser
   onLogout: () => void
+  collapsed: boolean
+  onToggleCollapse: () => void
 }
 
 interface NavItem { id: NavPage; labelKey: string; icon: ElementType }
@@ -54,6 +58,12 @@ const SECTIONS: NavSection[] = [
     ],
   },
   {
+    labelKey: 'section.finance',
+    items: [
+      { id: 'expenses', labelKey: 'nav.expenses', icon: Wallet },
+    ],
+  },
+  {
     labelKey: 'section.system',
     items: [
       { id: 'reports',  labelKey: 'nav.reports',  icon: BarChart3 },
@@ -62,7 +72,7 @@ const SECTIONS: NavSection[] = [
   },
 ]
 
-export default function Sidebar({ page, setPage, currentUser, onLogout }: Props) {
+export default function Sidebar({ page, setPage, currentUser, onLogout, collapsed, onToggleCollapse }: Props) {
   const { t, lang, setLang } = useLanguage()
 
   function toggleLang() {
@@ -70,31 +80,44 @@ export default function Sidebar({ page, setPage, currentUser, onLogout }: Props)
   }
 
   return (
-    <aside className="sidebar">
-      {/* Brand */}
+    <aside className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}`}>
+      {/* Brand + collapse toggle */}
       <div className="sidebar-brand">
-        <span className="sidebar-brand-name">Badachuli</span>
-        <span className="sidebar-brand-sub">Rice Mill</span>
+        {!collapsed && (
+          <>
+            <span className="sidebar-brand-name">Badachuli</span>
+            <span className="sidebar-brand-sub">Rice Mill</span>
+          </>
+        )}
+        <button
+          className="sidebar-collapse-btn"
+          onClick={onToggleCollapse}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {collapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+        </button>
       </div>
 
       {/* Navigation */}
       <nav className="sidebar-nav">
         {SECTIONS.map((section) => (
           <div key={section.labelKey || '__top__'}>
-            {section.labelKey && (
+            {section.labelKey && !collapsed && (
               <div className="sidebar-section-label">{t(section.labelKey)}</div>
             )}
             {section.items.map((item) => {
               const Icon = item.icon
-              const isActive = page === item.id
+              // The customer item report is a sub-page of the ledger; keep Ledger lit.
+              const isActive = page === item.id || (page === 'customer-report' && item.id === 'ledger')
               return (
                 <button
                   key={item.id}
-                  className={`sidebar-btn${isActive ? ' sidebar-btn-active' : ''}`}
+                  className={`sidebar-btn${isActive ? ' sidebar-btn-active' : ''}${collapsed ? ' sidebar-btn--icon-only' : ''}`}
                   onClick={() => setPage(item.id)}
+                  title={collapsed ? t(item.labelKey) : undefined}
                 >
                   <Icon className="sidebar-icon" />
-                  {t(item.labelKey)}
+                  {!collapsed && t(item.labelKey)}
                 </button>
               )
             })}
@@ -104,22 +127,38 @@ export default function Sidebar({ page, setPage, currentUser, onLogout }: Props)
 
       {/* Footer */}
       <div className="sidebar-footer">
-        {/* Language toggle */}
-        <button className="sidebar-lang-toggle" onClick={toggleLang} title={t('common.language')}>
-          <Cog size={12} />
-          {lang === 'en' ? 'EN → नेपाली' : 'NE → English'}
-        </button>
+        {!collapsed && (
+          <button className="sidebar-lang-toggle" onClick={toggleLang} title={t('common.language')}>
+            <Cog size={12} />
+            {lang === 'en' ? 'EN → नेपाली' : 'NE → English'}
+          </button>
+        )}
 
-        <div className="sidebar-user">
-          <User size={14} className="text-orange-500" />
-          <div>
-            <div className="sidebar-user-name">{currentUser.username}</div>
-            <div className="sidebar-user-role">{currentUser.role}</div>
+        {collapsed ? (
+          <button
+            className="sidebar-btn sidebar-btn--icon-only"
+            onClick={toggleLang}
+            title={lang === 'en' ? 'Switch to नेपाली' : 'Switch to English'}
+          >
+            <Cog size={15} />
+          </button>
+        ) : (
+          <div className="sidebar-user">
+            <User size={14} className="text-orange-500" />
+            <div>
+              <div className="sidebar-user-name">{currentUser.username}</div>
+              <div className="sidebar-user-role">{currentUser.role}</div>
+            </div>
           </div>
-        </div>
-        <button className="sidebar-logout" onClick={onLogout}>
+        )}
+
+        <button
+          className={`sidebar-logout${collapsed ? ' sidebar-btn--icon-only' : ''}`}
+          onClick={onLogout}
+          title={collapsed ? t('common.lock_session') : undefined}
+        >
           <LogOut size={13} />
-          {t('common.lock_session')}
+          {!collapsed && t('common.lock_session')}
         </button>
       </div>
     </aside>

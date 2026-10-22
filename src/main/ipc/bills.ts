@@ -6,16 +6,18 @@ import {
   getBillById,
   getBillLines,
   getNextBillNumber,
-  addPayment,
-  getPaymentsByBillId,
+  getBillLedgerEntries,
   cancelBill,
   getCustomerStatement,
+  getCustomerItemLines,
 } from '../../repository/bill.repo'
+import { writeAuditLog } from '../audit'
 import type { IpcResult } from '../../shared/types/api'
 import type {
   BillWithCustomer, BillLineWithDetail, CreateBillInput,
-  PaymentRow, CustomerStatementEntry,
+  CustomerStatementEntry, CustomerItemLine,
 } from '../../repository/bill.repo'
+import type { LedgerEntryView } from '../../repository/ledger.repo'
 
 export function registerBillHandlers(db: Database.Database): void {
   ipcMain.handle('bills:getNextNumber', (_e, businessId: number): IpcResult<{ billNumber: string }> => {
@@ -26,9 +28,9 @@ export function registerBillHandlers(db: Database.Database): void {
     }
   })
 
-  ipcMain.handle('bills:getAll', (_e, limit?: number, businessId?: number): IpcResult<BillWithCustomer[]> => {
+  ipcMain.handle('bills:getAll', (_e, limit?: number, businessId?: number, fromDate?: string, toDate?: string): IpcResult<BillWithCustomer[]> => {
     try {
-      return { ok: true, data: getBills(db, limit, businessId) }
+      return { ok: true, data: getBills(db, limit, businessId, fromDate, toDate) }
     } catch (e) {
       return { ok: false, error: String(e) }
     }
@@ -53,24 +55,21 @@ export function registerBillHandlers(db: Database.Database): void {
   })
 
   ipcMain.handle(
-    'bills:collectPayment',
-    (_e, billId: number, amount: number, method: string, operatorId: number): IpcResult => {
-      try {
-        addPayment(db, billId, amount, method as 'cash' | 'bank' | 'digital' | 'credit', operatorId)
-        return { ok: true }
-      } catch (e) {
-        return { ok: false, error: String(e) }
-      }
-    }
-  )
-
-  ipcMain.handle(
     'bills:create',
     (_e, input: CreateBillInput): IpcResult<{ billId: number; billNumber: string }> => {
       try {
         if (!input.lines?.length) return { ok: false, error: 'Bill must have at least one item' }
         if (!input.operatorId) return { ok: false, error: 'Operator is required' }
         const result = createBill(db, input)
+        const grandTotal = input.lines.reduce((s, l) => s + l.lineTotal, 0) - input.discountAmount
+        const lineTypes = new Set(input.lines.map(l => l.lineType))
+        const billKind = lineTypes.size > 1 ? 'mixed' : [...lineTypes][0]
+        writeAuditLog(db, 'BILL_CREATED', 'bills', result.billId, {
+          billNumber: result.billNumber,
+          billType: billKind,
+          grandTotal,
+          itemCount: input.lines.length,
+        }, input.operatorId)
         return { ok: true, data: result }
       } catch (e) {
         return { ok: false, error: String(e) }
@@ -78,9 +77,9 @@ export function registerBillHandlers(db: Database.Database): void {
     }
   )
 
-  ipcMain.handle('bills:getPayments', (_e, billId: number): IpcResult<PaymentRow[]> => {
+  ipcMain.handle('bills:getPayments', (_e, billId: number): IpcResult<LedgerEntryView[]> => {
     try {
-      return { ok: true, data: getPaymentsByBillId(db, billId) }
+      return { ok: true, data: getBillLedgerEntries(db, billId) }
     } catch (e) {
       return { ok: false, error: String(e) }
     }
@@ -91,7 +90,12 @@ export function registerBillHandlers(db: Database.Database): void {
     (_e, billId: number, reason: string, operatorId: number): IpcResult => {
       try {
         if (!reason?.trim()) return { ok: false, error: 'Cancellation reason is required' }
+        const bill = getBillById(db, billId)
         cancelBill(db, billId, reason.trim(), operatorId)
+        writeAuditLog(db, 'BILL_CANCELLED', 'bills', billId, {
+          billNumber: bill?.bill_number ?? String(billId),
+          reason: reason.trim(),
+        }, operatorId)
         return { ok: true }
       } catch (e) {
         return { ok: false, error: String(e) }
@@ -101,9 +105,20 @@ export function registerBillHandlers(db: Database.Database): void {
 
   ipcMain.handle(
     'bills:getCustomerStatement',
-    (_e, customerId: number, businessId?: number): IpcResult<CustomerStatementEntry[]> => {
+    (_e, customerId: number): IpcResult<CustomerStatementEntry[]> => {
       try {
-        return { ok: true, data: getCustomerStatement(db, customerId, businessId) }
+        return { ok: true, data: getCustomerStatement(db, customerId) }
+      } catch (e) {
+        return { ok: false, error: String(e) }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'bills:getCustomerItemLines',
+    (_e, customerId: number): IpcResult<CustomerItemLine[]> => {
+      try {
+        return { ok: true, data: getCustomerItemLines(db, customerId) }
       } catch (e) {
         return { ok: false, error: String(e) }
       }

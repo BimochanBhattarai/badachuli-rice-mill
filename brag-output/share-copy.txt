@@ -1,0 +1,5 @@
+Badachuli Rice Mill in Nawalpur ran on paper ledgers.
+
+It now runs on this: an offline-first desktop app that bills walk-in customers for milling their
+own grain, tracks udharo, and prints 80mm thermal receipts in Nepali with Bikram Sambat dates.
+Every total is computed from the ledger, and none of it needs the internet.

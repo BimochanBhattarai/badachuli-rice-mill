@@ -1,0 +1,12 @@
+-- Usernames keep the case the user typed ('Admin', 'Bimochan'), while remaining
+-- case-insensitive for login and uniqueness.
+--
+-- The column keeps its default BINARY collation and its original UNIQUE constraint;
+-- this index is the binding one and is strictly stronger. Done as an index rather than
+-- `username TEXT COLLATE NOCASE` because changing a column's collation needs a full
+-- table rebuild, and `users` is referenced by foreign keys from bills, payments,
+-- customer_ledger, audit_log, loans and salary tables -- not worth the risk for this.
+--
+-- Prevents 'Admin' and 'admin' existing as two different logins. Covers inactive users
+-- too, so deactivating someone does not free up a confusable name.
+CREATE UNIQUE INDEX idx_users_username_nocase ON users(username COLLATE NOCASE);

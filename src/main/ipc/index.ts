@@ -15,6 +15,10 @@ import { registerPurchaseHandlers } from './purchases'
 import { registerBusinessHandlers } from './businesses'
 import { registerPrintHandlers } from './print'
 import { registerBackupHandlers } from './backup'
+import { registerUserHandlers } from './users'
+import { registerAuditHandlers } from './audit_handler'
+import { registerFinanceHandlers } from './finance'
+import { registerTokenHandlers } from './tokens'
 
 export function registerIpcHandlers(db: Database.Database): void {
   registerSettingsHandlers(db)
@@ -32,6 +36,10 @@ export function registerIpcHandlers(db: Database.Database): void {
   registerBusinessHandlers(db)
   registerPrintHandlers()
   registerBackupHandlers()
+  registerUserHandlers(db)
+  registerAuditHandlers(db)
+  registerFinanceHandlers(db)
+  registerTokenHandlers(db)
 
   ipcMain.handle('ping', () => 'pong')
 }

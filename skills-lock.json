@@ -7,6 +7,12 @@
       "skillPath": "skills/autofix/SKILL.md",
       "computedHash": "421f9102c20fb1c91d87a10ca9bee2e91c7e632e644dfdd3dc013e53865df6c1"
     },
+    "brag-slim": {
+      "source": "latent-spaces/brag",
+      "sourceType": "github",
+      "skillPath": "skills/brag-slim/SKILL.md",
+      "computedHash": "134f4ed365690db924b6c565520ea8b1ddecb3e6e3072409158259b9ee691f2f"
+    },
     "code-review": {
       "source": "coderabbitai/skills",
       "sourceType": "github",

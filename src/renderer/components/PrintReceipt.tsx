@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom'
 import { useState } from 'react'
 import type { BillWithCustomer, BillLineWithDetail, BusinessRow } from '../../shared/types/api'
+import { buildKhataRows, khataFooter, CREDIT_SUFFIX } from '@shared/khata'
 
 interface Props {
   bill: BillWithCustomer
@@ -71,7 +72,7 @@ function adToBS(adDate: Date): { year: number; month: number; day: number } {
 }
 
 function fmtDateBS(s: string): string {
-  const ad = new Date(s)
+  const ad = new Date(s.includes('T') ? s : s.replace(' ', 'T') + 'Z')
   if (isNaN(ad.getTime())) return s
   const { year, month, day } = adToBS(ad)
   return toNepaliNum(String(day).padStart(2, '0')) + ' ' + BS_MONTHS[month - 1] + ' ' + toNepaliNum(year)
@@ -87,7 +88,8 @@ export default function PrintReceipt({ bill, lines, business, onClose }: Props) 
     try {
       const printerIp = (await window.api.settings.get('printer_ip') as string | null) || undefined
       const res = await window.api.print.receipt(bill, lines, business, printerIp)
-      if (!res.ok) setPrintError(res.error ?? 'छाप्न सकिएन')
+      if (!res.ok) { setPrintError(res.error ?? 'छाप्न सकिएन'); return }
+      onClose()
     } catch (e) {
       setPrintError(e instanceof Error ? e.message : 'छाप्न सकिएन')
     } finally {
@@ -127,38 +129,70 @@ function ReceiptContent({ bill, lines, business }: {
   lines: BillLineWithDetail[]
   business: BusinessRow
 }) {
-  const hasDue = bill.due_amount > 0.005
+
+  const typeLabel = bill.bill_kind === 'mixed' ? 'बिक्री / प्रशोधन' : bill.bill_kind === 'processing' ? 'प्रशोधन' : 'बिक्री'
+
+  const saleLines = lines.filter(l => l.line_type !== 'processing')
+  const procLines = lines.filter(l => l.line_type === 'processing')
+  const isMixed   = saleLines.length > 0 && procLines.length > 0
+
+  function renderLineGroup(grp: BillLineWithDetail[], sectionLabel: string | null) {
+    return (
+      <>
+        {sectionLabel && <div className="receipt-section-label">{sectionLabel}</div>}
+        {grp.map(l => {
+          const itemLabel = (l.variant_name && l.variant_name !== l.item_name)
+            ? `${l.item_name} (${l.variant_name})`
+            : l.item_name
+          return (
+            <div key={l.id}>
+              <div className="receipt-line">
+                <span className="receipt-col-item">{itemLabel}</span>
+                <span className="receipt-col-qty">{toNepaliNum(l.qty)}{l.unit_abbreviation}</span>
+                <span className="receipt-col-rate">{fmtAmtNe(l.rate_snapshot)}</span>
+                <span className="receipt-col-total">{fmtAmtNe(l.line_total)}</span>
+              </div>
+              {l.line_discount > 0 && (
+                <div className="receipt-line-discount">छूट: {fmtAmtNe(l.line_discount)}</div>
+              )}
+            </div>
+          )
+        })}
+      </>
+    )
+  }
 
   return (
     <div className="receipt">
-      {/* Header */}
+      {/* Header top: PAN left, type badge right */}
+      <div className="receipt-header-top">
+        <span>{business.pan_number ? `प्यान नं : ${business.pan_number}` : ''}</span>
+        <span className="receipt-type-badge">{typeLabel}</span>
+      </div>
+
+      {/* Business name + contact */}
       <div className="receipt-center">
         <div className="receipt-mill-name">{business.name}</div>
-        {business.address    && <div className="receipt-detail">{business.address}</div>}
-        {business.phone      && <div className="receipt-detail">फोन: {business.phone}</div>}
-        {business.pan_number && <div className="receipt-detail">PAN: {business.pan_number}</div>}
+        {business.address && <div className="receipt-detail">{business.address}</div>}
+        {business.phone   && <div className="receipt-detail">फोन: {business.phone}</div>}
       </div>
 
       <div className="receipt-divider" />
 
-      {/* Bill meta */}
-      <div className="receipt-row">
-        <span>बिल नं.</span><span>{bill.bill_number}</span>
-      </div>
-      <div className="receipt-row">
-        <span>मिति</span><span>{fmtDateBS(bill.created_at)}</span>
-      </div>
-      <div className="receipt-row">
-        <span>प्रकार</span>
-        <span>{bill.bill_type === 'processing' ? 'प्रशोधन' : 'बिक्री'}</span>
+      {/* Bill no. and date on one line */}
+      <div className="receipt-bill-meta">
+        <span>बिल नं : <strong>{bill.bill_number}</strong></span>
+        <span>मिति : {fmtDateBS(bill.created_at)}</span>
       </div>
       {bill.customer_name && (
-        <div className="receipt-row">
-          <span>ग्राहक</span><span>{bill.customer_name}</span>
-        </div>
+        <div className="receipt-detail" style={{ padding: '1px 0' }}>श्री {bill.customer_name}</div>
       )}
-
-      <div className="receipt-divider" />
+      {bill.customer_pan && (
+        <div className="receipt-detail">प्यान नं : {bill.customer_pan}</div>
+      )}
+      {bill.customer_address && (
+        <div className="receipt-detail">ठेगाना: {bill.customer_address}</div>
+      )}
 
       {/* Column header */}
       <div className="receipt-line-header">
@@ -168,55 +202,34 @@ function ReceiptContent({ bill, lines, business }: {
         <span className="receipt-col-total">जम्मा</span>
       </div>
 
-      {/* Lines — single flex row per item */}
-      {lines.map(l => {
-        const itemLabel = (l.variant_name && l.variant_name !== l.item_name)
-          ? `${l.item_name} (${l.variant_name})`
-          : l.item_name
-        return (
-          <div key={l.id}>
-            <div className="receipt-line">
-              <span className="receipt-col-item">{itemLabel}</span>
-              <span className="receipt-col-qty">{toNepaliNum(l.qty)}{l.unit_abbreviation}</span>
-              <span className="receipt-col-rate">{fmtAmtNe(l.rate_snapshot)}</span>
-              <span className="receipt-col-total">{fmtAmtNe(l.line_total)}</span>
-            </div>
-            {l.line_discount > 0 && (
-              <div className="receipt-line-discount">
-                छूट: {fmtAmtNe(l.line_discount)}
-              </div>
-            )}
-          </div>
-        )
-      })}
+      {/* Lines — grouped by type when mixed */}
+      {renderLineGroup(isMixed ? saleLines : lines, isMixed ? 'बिक्री' : null)}
+      {isMixed && renderLineGroup(procLines, 'प्रशोधन')}
 
-      <div className="receipt-divider" />
-
-      {/* Totals */}
-      <div className="receipt-row">
-        <span>उप-जम्मा</span><span>{fmtAmtNe(bill.subtotal)}</span>
-      </div>
-      {bill.discount_amount > 0 && (
-        <div className="receipt-row">
-          <span>छूट</span><span>- {fmtAmtNe(bill.discount_amount)}</span>
+      {/* Totals / khata block — content comes from @shared/khata so this and the
+          ESC/POS renderer in src/main/ipc/print.ts can never disagree. */}
+      {buildKhataRows(bill).map((r, i) => (
+        <div
+          key={i}
+          className={
+            r.style === 'grand' ? 'receipt-row receipt-row-due'
+            : r.style === 'total' ? 'receipt-row receipt-row-total'
+            : 'receipt-row'
+          }
+        >
+          <span>{r.label}</span>
+          <span>
+            {r.style === 'negate' ? '- ' : ''}
+            {fmtAmtNe(r.value)}
+            {r.credit ? CREDIT_SUFFIX : ''}
+          </span>
         </div>
-      )}
-      <div className="receipt-row receipt-row-total">
-        <span>ग्राण्ड जम्मा</span><span>{fmtAmtNe(bill.grand_total)}</span>
-      </div>
-      <div className="receipt-row">
-        <span>तिरेको</span><span>{fmtAmtNe(bill.paid_amount)}</span>
-      </div>
-      {hasDue && (
-        <div className="receipt-row receipt-row-due">
-          <span>बाँकी (उधारो)</span><span>{fmtAmtNe(bill.due_amount)}</span>
-        </div>
-      )}
+      ))}
 
       <div className="receipt-divider" />
 
       <div className="receipt-center receipt-footer">
-        {hasDue ? 'धन्यवाद — माथि उल्लेखित रकम बाँकी छ' : 'धन्यवाद!'}
+        {khataFooter(bill)}
       </div>
     </div>
   )

@@ -22,10 +22,14 @@ export function runMigrations(db: Database.Database): void {
     const version = parseInt(file.split('_')[0], 10)
     const sql = readFileSync(join(MIGRATIONS_DIR, file), 'utf-8')
 
+    // The user_version bump MUST be inside the transaction. PRAGMA user_version is
+    // journaled like any other page write, so committing it atomically with the DDL
+    // means a crash can never leave a migration applied but unrecorded (which would
+    // re-run non-idempotent DDL on next boot and hard-fail).
     db.transaction(() => {
       db.exec(sql)
+      db.pragma(`user_version = ${version}`)
     })()
-    db.pragma(`user_version = ${version}`)
 
     console.log(`[migration] applied ${file}`)
   }

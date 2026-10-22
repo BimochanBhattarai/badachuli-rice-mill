@@ -1,0 +1,1 @@
+ALTER TABLE customers ADD COLUMN opening_balance NUMERIC NOT NULL DEFAULT 0;

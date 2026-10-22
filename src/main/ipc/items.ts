@@ -6,7 +6,9 @@ import {
   searchItems,
   createItem,
   updateItem,
+  setItemPriority,
   deactivateItem,
+  restoreItem,
 } from '../../repository/item.repo'
 import {
   getVariantsByItem,
@@ -15,10 +17,13 @@ import {
   updateVariant,
   deactivateVariant,
   ensureDefaultVariant,
+  getArchivedVariants,
+  restoreVariant,
+  setVariantPriority,
 } from '../../repository/variant.repo'
 import type { IpcResult } from '../../shared/types/api'
 import type { ItemWithUnit } from '../../repository/item.repo'
-import type { VariantRow } from '../../repository/variant.repo'
+import type { VariantRow, ArchivedVariantRow } from '../../repository/variant.repo'
 
 export function registerItemHandlers(db: Database.Database): void {
   ipcMain.handle(
@@ -65,7 +70,8 @@ export function registerItemHandlers(db: Database.Database): void {
       defaultUnitId: number,
       isBuyable: boolean,
       isSellable: boolean,
-      isProcessable: boolean
+      isProcessable: boolean,
+      enableToken: boolean = false
     ): IpcResult<{ id: number; variantId: number }> => {
       try {
         if (!name?.trim()) return { ok: false, error: 'Item name is required' }
@@ -73,7 +79,7 @@ export function registerItemHandlers(db: Database.Database): void {
           return { ok: false, error: 'Select at least one purpose (Buy, Sell, or Process)' }
 
         const itemId = db.transaction(() => {
-          const id = createItem(db, name.trim(), defaultUnitId, isBuyable, isSellable, isProcessable)
+          const id = createItem(db, name.trim(), defaultUnitId, isBuyable, isSellable, isProcessable, enableToken)
           createVariant(db, id, name.trim(), true)
           return id
         })()
@@ -95,13 +101,14 @@ export function registerItemHandlers(db: Database.Database): void {
       defaultUnitId: number,
       isBuyable: boolean,
       isSellable: boolean,
-      isProcessable: boolean
+      isProcessable: boolean,
+      enableToken: boolean = false
     ): IpcResult => {
       try {
         if (!name?.trim()) return { ok: false, error: 'Item name is required' }
         if (!isBuyable && !isSellable && !isProcessable)
           return { ok: false, error: 'Select at least one purpose' }
-        updateItem(db, id, name.trim(), defaultUnitId, isBuyable, isSellable, isProcessable)
+        updateItem(db, id, name.trim(), defaultUnitId, isBuyable, isSellable, isProcessable, enableToken)
         return { ok: true }
       } catch (e: unknown) {
         return { ok: false, error: e instanceof Error ? e.message : String(e) }
@@ -112,6 +119,15 @@ export function registerItemHandlers(db: Database.Database): void {
   ipcMain.handle('items:deactivate', (_e, id: number): IpcResult => {
     try {
       deactivateItem(db, id)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: String(e) }
+    }
+  })
+
+  ipcMain.handle('items:restore', (_e, id: number): IpcResult => {
+    try {
+      restoreItem(db, id)
       return { ok: true }
     } catch (e) {
       return { ok: false, error: String(e) }
@@ -178,5 +194,25 @@ export function registerItemHandlers(db: Database.Database): void {
     } catch (e) {
       return { ok: false, error: String(e) }
     }
+  })
+
+  ipcMain.handle('variants:getArchived', (): IpcResult<ArchivedVariantRow[]> => {
+    try { return { ok: true, data: getArchivedVariants(db) } }
+    catch (e) { return { ok: false, error: String(e) } }
+  })
+
+  ipcMain.handle('variants:restore', (_e, id: number): IpcResult => {
+    try { restoreVariant(db, id); return { ok: true } }
+    catch (e) { return { ok: false, error: String(e) } }
+  })
+
+  ipcMain.handle('items:setPriority', (_e, id: number, priority: number | null): IpcResult => {
+    try { setItemPriority(db, id, priority); return { ok: true } }
+    catch (e) { return { ok: false, error: String(e) } }
+  })
+
+  ipcMain.handle('variants:setPriority', (_e, id: number, priority: number | null): IpcResult => {
+    try { setVariantPriority(db, id, priority); return { ok: true } }
+    catch (e) { return { ok: false, error: String(e) } }
   })
 }

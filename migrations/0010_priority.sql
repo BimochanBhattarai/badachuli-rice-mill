@@ -1,0 +1,2 @@
+ALTER TABLE items    ADD COLUMN priority INTEGER;
+ALTER TABLE variants ADD COLUMN priority INTEGER;

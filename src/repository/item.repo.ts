@@ -9,7 +9,9 @@ export interface ItemRow {
   is_buyable: number
   is_sellable: number
   is_processable: number
+  enable_token: number
   created_at: string
+  priority: number | null
 }
 
 export interface ItemWithUnit extends ItemRow {
@@ -37,7 +39,7 @@ export function getAllItems(db: Database.Database, activeOnly = true): ItemWithU
        FROM items i
        JOIN units u ON u.id = i.default_unit_id
        ${where}
-       ORDER BY i.name`
+       ORDER BY COALESCE(i.priority, 999999), i.name`
     )
     .all() as ItemWithUnit[]
 }
@@ -71,7 +73,7 @@ export function searchItems(
       `SELECT i.*, u.name as unit_name, u.abbreviation as unit_abbreviation
        FROM items i JOIN units u ON u.id = i.default_unit_id
        WHERE ${where}
-       ORDER BY i.name LIMIT 50`
+       ORDER BY COALESCE(i.priority, 999999), i.name LIMIT 50`
     )
     .all(pattern) as ItemWithUnit[]
 }
@@ -82,15 +84,16 @@ export function createItem(
   defaultUnitId: number,
   isBuyable: boolean,
   isSellable: boolean,
-  isProcessable: boolean
+  isProcessable: boolean,
+  enableToken: boolean = false
 ): number {
   const category = deriveCategory(isBuyable, isSellable, isProcessable)
   const result = db
     .prepare(
-      `INSERT INTO items (name, category, default_unit_id, is_buyable, is_sellable, is_processable)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO items (name, category, default_unit_id, is_buyable, is_sellable, is_processable, enable_token)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(name, category, defaultUnitId, isBuyable ? 1 : 0, isSellable ? 1 : 0, isProcessable ? 1 : 0)
+    .run(name, category, defaultUnitId, isBuyable ? 1 : 0, isSellable ? 1 : 0, isProcessable ? 1 : 0, enableToken ? 1 : 0)
   return result.lastInsertRowid as number
 }
 
@@ -101,17 +104,26 @@ export function updateItem(
   defaultUnitId: number,
   isBuyable: boolean,
   isSellable: boolean,
-  isProcessable: boolean
+  isProcessable: boolean,
+  enableToken: boolean = false
 ): void {
   const category = deriveCategory(isBuyable, isSellable, isProcessable)
   db.prepare(
     `UPDATE items
      SET name = ?, category = ?, default_unit_id = ?,
-         is_buyable = ?, is_sellable = ?, is_processable = ?
+         is_buyable = ?, is_sellable = ?, is_processable = ?, enable_token = ?
      WHERE id = ?`
-  ).run(name, category, defaultUnitId, isBuyable ? 1 : 0, isSellable ? 1 : 0, isProcessable ? 1 : 0, id)
+  ).run(name, category, defaultUnitId, isBuyable ? 1 : 0, isSellable ? 1 : 0, isProcessable ? 1 : 0, enableToken ? 1 : 0, id)
+}
+
+export function setItemPriority(db: Database.Database, id: number, priority: number | null): void {
+  db.prepare('UPDATE items SET priority = ? WHERE id = ?').run(priority, id)
 }
 
 export function deactivateItem(db: Database.Database, id: number): void {
   db.prepare('UPDATE items SET is_active = 0 WHERE id = ?').run(id)
+}
+
+export function restoreItem(db: Database.Database, id: number): void {
+  db.prepare('UPDATE items SET is_active = 1 WHERE id = ?').run(id)
 }

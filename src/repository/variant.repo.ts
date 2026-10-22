@@ -6,12 +6,34 @@ export interface VariantRow {
   name: string
   is_default: number
   is_active: number
+  priority: number | null
+}
+
+export interface ArchivedVariantRow extends VariantRow {
+  item_name: string
 }
 
 export function getVariantsByItem(db: Database.Database, itemId: number): VariantRow[] {
   return db
-    .prepare('SELECT * FROM variants WHERE item_id = ? ORDER BY is_default DESC, name')
+    .prepare('SELECT * FROM variants WHERE item_id = ? ORDER BY COALESCE(priority, 999999), is_default DESC, name')
     .all(itemId) as VariantRow[]
+}
+
+export function getArchivedVariants(db: Database.Database): ArchivedVariantRow[] {
+  return db.prepare(
+    `SELECT v.*, i.name as item_name
+     FROM variants v JOIN items i ON i.id = v.item_id
+     WHERE v.is_active = 0
+     ORDER BY i.name, v.name`
+  ).all() as ArchivedVariantRow[]
+}
+
+export function restoreVariant(db: Database.Database, id: number): void {
+  db.prepare('UPDATE variants SET is_active = 1 WHERE id = ?').run(id)
+}
+
+export function setVariantPriority(db: Database.Database, id: number, priority: number | null): void {
+  db.prepare('UPDATE variants SET priority = ? WHERE id = ?').run(priority, id)
 }
 
 export function getVariantById(db: Database.Database, id: number): VariantRow | undefined {

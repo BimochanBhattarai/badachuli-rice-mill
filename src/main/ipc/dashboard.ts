@@ -4,7 +4,9 @@ import {
   getDashboardData,
   getSalesReport,
   getItemSalesReport,
-  getCustomerLedger,
+  getCustomerBalances,
+  getItemReport,
+  getBusinessSummary,
 } from '../../repository/dashboard.repo'
 import type { IpcResult } from '../../shared/types/api'
 import type {
@@ -12,6 +14,8 @@ import type {
   SalesReport,
   ItemSalesLine,
   CustomerLedgerLine,
+  ItemReportRow,
+  BusinessSummary,
 } from '../../repository/dashboard.repo'
 
 export function registerDashboardHandlers(db: Database.Database): void {
@@ -45,11 +49,33 @@ export function registerDashboardHandlers(db: Database.Database): void {
     }
   )
 
-  ipcMain.handle('dashboard:getCustomerLedger', (): IpcResult<CustomerLedgerLine[]> => {
+  ipcMain.handle('dashboard:getCustomerBalances', (): IpcResult<CustomerLedgerLine[]> => {
     try {
-      return { ok: true, data: getCustomerLedger(db) }
+      return { ok: true, data: getCustomerBalances(db) }
     } catch (e) {
       return { ok: false, error: String(e) }
     }
   })
+
+  ipcMain.handle(
+    'dashboard:getItemReport',
+    (_e, billType: 'sale' | 'processing', fromDate: string, toDate: string, businessId?: number): IpcResult<ItemReportRow[]> => {
+      try {
+        return { ok: true, data: getItemReport(db, billType, fromDate, toDate, businessId) }
+      } catch (e) {
+        return { ok: false, error: String(e) }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'dashboard:getBusinessSummary',
+    (_e, fromDate: string, toDate: string, businessId?: number): IpcResult<BusinessSummary> => {
+      try {
+        return { ok: true, data: getBusinessSummary(db, fromDate, toDate, businessId) }
+      } catch (e) {
+        return { ok: false, error: String(e) }
+      }
+    }
+  )
 }

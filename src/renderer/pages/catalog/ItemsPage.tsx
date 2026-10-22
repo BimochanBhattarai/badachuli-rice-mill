@@ -79,7 +79,7 @@ function today() { return new Date().toISOString().slice(0, 10) }
 export default function ItemsPage() {
   const { t } = useLanguage()
 
-  const [tab, setTab] = useState<Tab>('buying')
+  const [tab, setTab] = useState<Tab>('processing')
   const [items, setItems] = useState<ItemRow[]>([])
   const [units, setUnits] = useState<UnitRow[]>([])
   const [search, setSearch] = useState('')
@@ -92,7 +92,7 @@ export default function ItemsPage() {
 
   // Edit modal
   const [editingItem, setEditingItem] = useState<ItemRow | null>(null)
-  const [editForm, setEditForm] = useState({ name: '', defaultUnitId: '', isBuyable: false, isSellable: false, isProcessable: false })
+  const [editForm, setEditForm] = useState({ name: '', defaultUnitId: '', enableToken: false })
   const [editError, setEditError] = useState('')
   const [editLoading, setEditLoading] = useState(false)
 
@@ -103,6 +103,9 @@ export default function ItemsPage() {
   const [variantEditName, setVariantEditName] = useState('')
   const [variantCreateName, setVariantCreateName] = useState('')
   const [variantError, setVariantError] = useState('')
+
+  // Item priority (inline in list)
+  const [itemPriorityEdit, setItemPriorityEdit] = useState<Record<number, string>>({})
 
   async function loadItems() {
     const res = await window.api.items.search(search, SEARCH_FILTER[tab])
@@ -200,9 +203,7 @@ export default function ItemsPage() {
     setEditForm({
       name: item.name,
       defaultUnitId: String(item.default_unit_id),
-      isBuyable:     !!item.is_buyable,
-      isSellable:    !!item.is_sellable,
-      isProcessable: !!item.is_processable,
+      enableToken: item.enable_token === 1,
     })
     setEditError('')
   }
@@ -212,14 +213,12 @@ export default function ItemsPage() {
     setEditError('')
     const unitId = parseInt(editForm.defaultUnitId)
     if (!editForm.name.trim()) { setEditError('Name is required'); return }
-    if (!editForm.isBuyable && !editForm.isSellable && !editForm.isProcessable) {
-      setEditError('Select at least one purpose'); return
-    }
     setEditLoading(true)
     try {
       const res = await window.api.items.update(
         editingItem.id, editForm.name.trim(), unitId,
-        editForm.isBuyable, editForm.isSellable, editForm.isProcessable
+        !!editingItem.is_buyable, !!editingItem.is_sellable, !!editingItem.is_processable,
+        editForm.enableToken
       )
       if (!res.ok) { setEditError(res.error ?? 'Update failed'); return }
       setEditingItem(null)
@@ -271,6 +270,23 @@ export default function ItemsPage() {
     loadExpandedVariants(v.item_id)
   }
 
+  function parsePriority(val: string): number | null {
+    const s = val.trim()
+    if (!s) return null
+    const n = parseInt(s, 10)
+    return isNaN(n) || n < 1 ? null : n
+  }
+
+  async function submitVariantPriority(variantId: number, itemId: number, val: string) {
+    await window.api.variants.setPriority(variantId, parsePriority(val))
+    loadExpandedVariants(itemId)
+  }
+
+  async function submitItemPriority(itemId: number, val: string) {
+    await window.api.items.setPriority(itemId, parsePriority(val))
+    loadItems()
+  }
+
   async function deactivateItem(id: number) {
     if (!confirm('Archive this item? It will no longer appear in billing.')) return
     const res = await window.api.items.deactivate(id)
@@ -290,7 +306,7 @@ export default function ItemsPage() {
       {/* ── Tabs ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
         <div className="price-tabs">
-          {(['buying', 'processing', 'selling'] as Tab[]).map(tabKey => (
+          {(['processing', 'selling', 'buying'] as Tab[]).map(tabKey => (
             <button
               key={tabKey}
               className={`price-tab-btn${tab === tabKey ? ' price-tab-active' : ''}`}
@@ -479,28 +495,16 @@ export default function ItemsPage() {
                 </select>
               </label>
             </div>
-            <div className="purpose-flags" style={{ marginBottom: 0 }}>
-              <span className="purpose-flags-label">Can be:</span>
-              <label className="label-checkbox">
-                <input type="checkbox" checked={editForm.isBuyable}
-                  onChange={e => setEditForm(f => ({ ...f, isBuyable: e.target.checked }))} />
-                Bought
-              </label>
-              <label className="label-checkbox">
-                <input type="checkbox" checked={editForm.isSellable}
-                  onChange={e => setEditForm(f => ({ ...f, isSellable: e.target.checked }))} />
-                Sold
-              </label>
-              <label className="label-checkbox">
-                <input type="checkbox" checked={editForm.isProcessable}
-                  onChange={e => setEditForm(f => ({ ...f, isProcessable: e.target.checked }))} />
-                Processed
-              </label>
-            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginTop: '0.75rem', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 500 }}>
+              <input
+                type="checkbox"
+                checked={editForm.enableToken}
+                onChange={e => setEditForm(f => ({ ...f, enableToken: e.target.checked }))}
+                style={{ width: 16, height: 16, accentColor: '#f97316', cursor: 'pointer' }}
+              />
+              {t('items.enable_token')}
+            </label>
             {editError && <div className="form-error">{editError}</div>}
-            <p className="text-muted" style={{ fontSize: '0.78rem', marginTop: '0.5rem' }}>
-              To update prices or manage variants, use the Prices tab or expand the item row.
-            </p>
             <div className="confirm-actions">
               <button className="btn-primary" onClick={submitEdit} disabled={editLoading}>
                 {editLoading ? t('common.saving') : t('common.save')}
@@ -517,12 +521,13 @@ export default function ItemsPage() {
           <tr>
             <th>{t('common.name')}</th>
             <th>{t('items.default_unit')}</th>
+            <th style={{ width: 90 }}>Priority</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
           {items.length === 0 && (
-            <tr><td colSpan={3} className="empty-state">{t('items.none')}</td></tr>
+            <tr><td colSpan={4} className="empty-state">{t('items.none')}</td></tr>
           )}
           {items.map(item => (
             <>
@@ -533,6 +538,19 @@ export default function ItemsPage() {
                   </button>
                 </td>
                 <td className="text-muted">{item.unit_name} ({item.unit_abbreviation})</td>
+                <td>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="—"
+                    className="bill-input bill-input-xs"
+                    style={{ width: 64, textAlign: 'center' }}
+                    defaultValue={item.priority ?? ''}
+                    key={`ip-${item.id}-${item.priority}`}
+                    onBlur={e => submitItemPriority(item.id, e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                  />
+                </td>
                 <td className="row-actions">
                   <button className="btn-ghost btn-sm" onClick={() => openEdit(item)}>{t('common.edit')}</button>
                   <button className="btn-danger btn-sm" onClick={() => deactivateItem(item.id)}>{t('items.deactivate')}</button>
@@ -569,11 +587,11 @@ export default function ItemsPage() {
 
                       <table className="data-table data-table-sm">
                         <thead>
-                          <tr><th>Name</th><th>Default</th><th></th></tr>
+                          <tr><th>Name</th><th>Default</th><th style={{ width: 80 }}>Priority</th><th></th></tr>
                         </thead>
                         <tbody>
                           {expandedVariants.length === 0 && (
-                            <tr><td colSpan={3} className="empty-state">No variants</td></tr>
+                            <tr><td colSpan={4} className="empty-state">No variants</td></tr>
                           )}
                           {expandedVariants.map(v => (
                             <tr key={v.id}>
@@ -595,6 +613,19 @@ export default function ItemsPage() {
                                 ) : v.name}
                               </td>
                               <td>{v.is_default ? '✓' : ''}</td>
+                              <td>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  placeholder="—"
+                                  className="bill-input bill-input-xs"
+                                  style={{ width: 60, textAlign: 'center' }}
+                                  defaultValue={v.priority ?? ''}
+                                  key={`vp-${v.id}-${v.priority}`}
+                                  onBlur={e => submitVariantPriority(v.id, item.id, e.target.value)}
+                                  onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                                />
+                              </td>
                               <td className="row-actions">
                                 <button className="btn-ghost btn-sm" onClick={() => {
                                   setVariantEditId(v.id); setVariantEditName(v.name); setVariantError('')
